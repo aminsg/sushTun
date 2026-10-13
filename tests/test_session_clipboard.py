@@ -111,3 +111,83 @@ def test_a_copy_inside_the_app_goes_out_to_the_user(bridge):
     app.clipboard().setText("vless://share-link-from-the-table")
     app.processEvents()
     assert pushed == ["vless://share-link-from-the-table"]
+
+
+# -- cut, copy and paste where Qt's clipboard cannot be reached ---------------
+from PySide6.QtWidgets import QLineEdit, QPlainTextEdit  # noqa: E402
+
+
+@pytest.fixture
+def session(monkeypatch):
+    """A fake user pasteboard behind desktop.py, with the process 'elevated'."""
+    app = QApplication.instance() or QApplication([])
+    box = {"text": "vless://from-safari"}
+    monkeypatch.setattr(clipboard_bridge, "elevated_on_mac", lambda: True)
+    monkeypatch.setattr(clipboard_bridge.desktop, "session_clipboard_text",
+                        lambda: box["text"])
+    monkeypatch.setattr(clipboard_bridge.desktop, "set_session_clipboard_text",
+                        lambda t: box.update(text=t) or True)
+    # The keys act through the helper directly; no event filter is installed.
+    return app, box, clipboard_bridge.ClipboardKeys.__new__(clipboard_bridge.ClipboardKeys)
+
+
+def test_text_reads_the_users_pasteboard_when_elevated(session):
+    _app, box, _keys = session
+    assert clipboard_bridge.text() == "vless://from-safari"
+
+
+def test_text_falls_back_to_qt_when_the_read_failed(session, monkeypatch):
+    app, _box, _keys = session
+    monkeypatch.setattr(clipboard_bridge.desktop, "session_clipboard_text", lambda: None)
+    app.clipboard().setText("qt-text")
+    assert clipboard_bridge.text() == "qt-text"
+
+
+def test_set_text_reaches_the_users_pasteboard(session):
+    _app, box, _keys = session
+    clipboard_bridge.set_text("vless://share")
+    assert box["text"] == "vless://share"
+
+
+def test_paste_inserts_the_users_text_into_a_line_edit(session):
+    _app, _box, keys = session
+    field = QLineEdit("ab")
+    field.setCursorPosition(1)
+    assert keys.paste(field) is True
+    assert field.text() == "avless://from-safarib"
+
+
+def test_paste_inserts_into_a_multiline_field(session):
+    _app, box, keys = session
+    box["text"] = "line1\nline2"
+    field = QPlainTextEdit()
+    keys.paste(field)
+    assert field.toPlainText() == "line1\nline2"
+
+
+def test_paste_leaves_a_read_only_field_alone(session):
+    _app, _box, keys = session
+    field = QLineEdit("fixed")
+    field.setReadOnly(True)
+    assert keys.paste(field) is False
+    assert field.text() == "fixed"
+
+
+def test_copy_and_cut_send_the_selection_out(session):
+    _app, box, keys = session
+    field = QLineEdit("hello world")
+    field.setSelection(0, 5)
+    keys.copy(field)
+    assert box["text"] == "hello"
+    box["text"] = ""
+    keys.cut(field)
+    assert box["text"] == "hello"
+    assert field.text() == " world"
+
+
+def test_copy_of_a_multiline_selection_keeps_its_line_breaks(session):
+    _app, box, keys = session
+    field = QPlainTextEdit("a\nb")
+    field.selectAll()
+    keys.copy(field)
+    assert box["text"] == "a\nb"

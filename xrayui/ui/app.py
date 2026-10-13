@@ -77,9 +77,11 @@ def run(argv: list[str], elevated: bool = True, autostart: bool = False) -> int:
     updates_mod.clean_previous()
     app = Application(argv)
     if sys.platform == "darwin" and elevated:
+        from . import clipboard_bridge
         from .clipboard_bridge import SessionClipboard
         # Parented to the app, which keeps it alive for the whole session.
         SessionClipboard(app)
+        clipboard_bridge.ClipboardKeys(app)
     load_bundled_fonts()
     app.setApplicationName("sushTun")
     # GNOME on Wayland pairs a window with its launcher (and so its dock and

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.10.1
+
+### Fixed
+- **macOS: copy and paste now work.** The window runs with administrator rights, and in that state Qt cannot reach the macOS clipboard at all, so Cmd+V found nothing and a copied link never left the app. Paste, copy and cut in text fields, the paste-to-import shortcut, the routing import and export, and the share-link copy button now use your own clipboard directly.
+
+<!-- fa -->
+
+### چی درست شده
+- **مک: کپی و پیست دوباره کار می‌کنه.** پنجره‌ی برنامه با دسترسی ادمین اجرا می‌شه و تو این حالت Qt اصلاً به کلیپ‌بورد macOS دسترسی نداره؛ برای همین Cmd+V چیزی پیدا نمی‌کرد و لینکی که کپی می‌کردی از برنامه بیرون نمی‌رفت. حالا پیست، کپی و کات تو فیلدهای متنی، میان‌بر پیست برای import، import و export قوانین مسیریابی و دکمه‌ی کپی لینک اشتراک مستقیم از کلیپ‌بورد خودت استفاده می‌کنن.
+
 ## v0.10.0
 
 ### New

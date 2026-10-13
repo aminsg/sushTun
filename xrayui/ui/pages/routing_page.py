@@ -20,7 +20,6 @@ from pathlib import Path
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QThreadPool, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -47,6 +46,7 @@ from PySide6.QtWidgets import (
 from ...core import routing as routing_mod
 from ...core import routing_io, userfs, xraycheck
 from ...i18n import ltr, tr
+from .. import clipboard_bridge
 from ..help import help_html, set_help
 from ..rule_editor import CollapsibleSection, RuleEditorDialog, default_rule
 from ..theme import ACCENT, ERR, OK
@@ -842,7 +842,7 @@ class RoutingPage(QWidget):
         self._apply_imported(sets, skipped)
 
     def _import_from_clipboard(self) -> None:
-        text = QApplication.clipboard().text()
+        text = clipboard_bridge.text()
         if not text.strip():
             return
         sets, skipped = routing_io.import_rules(text)
@@ -872,7 +872,7 @@ class RoutingPage(QWidget):
         data = routing_io.export_rules(s)
         text = json.dumps(data, indent=2, ensure_ascii=False)
         if not to_file:
-            QApplication.clipboard().setText(text)
+            clipboard_bridge.set_text(text)
             self.status_label.setText(tr("Copied to clipboard."))
             return
         path, _ = QFileDialog.getSaveFileName(

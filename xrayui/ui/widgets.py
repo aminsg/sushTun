@@ -8,7 +8,6 @@ from PySide6.QtCore import QItemSelection, QItemSelectionModel, QSize, Qt, Signa
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -28,6 +27,7 @@ from PySide6.QtWidgets import (
 from ..core import share as share_mod
 from ..core.profiles import Profile
 from ..i18n import ltr, tr
+from . import clipboard_bridge
 from .flags import FLAG_H, FLAG_W
 from .help import set_help
 from .server_table import (
@@ -461,7 +461,7 @@ class _ServerTableCore(QWidget):
         if link is None:
             self._no_share_link()
             return
-        QApplication.clipboard().setText(link)
+        clipboard_bridge.set_text(link)
 
     def _show_qr(self, uid: str) -> None:
         p = self._profile(uid)

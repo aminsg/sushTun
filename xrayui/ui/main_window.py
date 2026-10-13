@@ -50,6 +50,7 @@ from ..core.connection import Connection, _resolve
 from ..core.profiles import Profile, ProfileStore
 from ..core.xray import is_xray_running
 from ..i18n import ltr, tr
+from . import clipboard_bridge
 from .dialogs import ImportDialog, ProfileEditDialog, SubscriptionEditDialog
 from .dns_dialog import DnsDialog
 from .flags import flag_pixmap
@@ -815,7 +816,7 @@ class MainWindow(QMainWindow):
         self._set_active(uid)
 
     def _paste_import(self) -> None:
-        text = QApplication.clipboard().text()
+        text = clipboard_bridge.text()
         if not text.strip():
             return
         url = sub_mod.subscription_url(text)

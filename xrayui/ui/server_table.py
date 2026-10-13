@@ -10,11 +10,12 @@ from math import inf
 import segno
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor, QPixmap
-from PySide6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from ..core import geo_exit
 from ..core.profiles import Profile
 from ..i18n import current, ltr, tr
+from . import clipboard_bridge
 from .flags import flag_icon
 from .help import help_html
 from .theme import ERR, MUTED, OK, WARN
@@ -327,4 +328,4 @@ class QrDialog(QDialog):
         layout.addLayout(row)
 
     def _copy(self) -> None:
-        QApplication.clipboard().setText(self._link)
+        clipboard_bridge.set_text(self._link)
