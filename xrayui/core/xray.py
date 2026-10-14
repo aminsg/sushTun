@@ -26,7 +26,14 @@ def _own_pattern() -> str:
 def is_xray_running() -> bool:
     if IS_WIN:
         return bool(_own_pids())
-    return proc.run(["pgrep", "-f", _own_pattern()]).returncode == 0
+    # Bounded: without a timeout a wedged pgrep stalls disconnect forever
+    # (this runs on the disconnect worker, whose hang reads as a stuck UI).
+    try:
+        return proc.run(["pgrep", "-f", _own_pattern()], timeout=10).returncode == 0
+    except subprocess.TimeoutExpired:
+        # Unknown: assume alive, so nothing is ever torn down from under a
+        # live tunnel on a loaded machine.
+        return True
 
 
 def _own_pids() -> list[int]:
@@ -53,11 +60,16 @@ def _own_pids() -> list[int]:
 
 
 def _kill_all() -> None:
-    if IS_WIN:
-        for pid in _own_pids():
-            proc.run(["taskkill", "/f", "/pid", str(pid), "/t"])
-    else:
-        proc.run(["pkill", "-f", _own_pattern()])
+    # Best-effort orphan sweep: a hung helper must neither stall disconnect
+    # nor fail a connect that only wanted its own child stopped.
+    try:
+        if IS_WIN:
+            for pid in _own_pids():
+                proc.run(["taskkill", "/f", "/pid", str(pid), "/t"], timeout=10)
+        else:
+            proc.run(["pkill", "-f", _own_pattern()], timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 class XrayProcess:
