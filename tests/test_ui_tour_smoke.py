@@ -113,3 +113,51 @@ def test_ui_tour_smoke_runs_fast_and_restores_global_state(tmp_path, flush_widge
     # where a loaded box turned a 1s tour into 16s and failed the suite;
     # it still catches a tour that has become truly un-runnable.
     assert elapsed < 90.0, f"smoke tour took {elapsed:.1f}s"
+
+
+def test_ui_tour_connected_state_completes(tmp_path, flush_widgets):
+    """The fake-connected state aborted the whole tour (exit 134): the
+    tour's _FakeState lacked profile_uid/chain_uid/server_ip, which
+    MainWindow._connected_profile/_refresh_status read when fake-connected.
+    Run just that state and demand its screenshot."""
+    _QMB = ["warning", "critical", "information", "question"]
+    _METRICS = ["ping", "tcp_connect_delay", "throughput_sample", "query_stats",
+                "baseline_sample", "diagnostics"]
+    snap = {
+        "connection": _snap(connection_mod, ["Connection"]),
+        "main_window": _snap(main_window, ["Connection", "is_xray_running"]),
+        "network": _snap(network, ["detect_interface"]),
+        "hotspot": _snap(hotspot, ["supported"]),
+        "xraycheck": _snap(xraycheck, ["check_config", "check_rules"]),
+        "metrics": _snap(metrics, _METRICS),
+        "qmb": _snap(QMessageBox, _QMB),
+        "paths": _snap(paths, ["base_dir", "state_dir", "profiles_dir"]),
+    }
+    app = QApplication.instance() or QApplication([])
+    flush_widgets()
+    old_layout = app.layoutDirection()
+    old_ss = app.styleSheet()
+    old_lang = i18n.current()
+
+    try:
+        from tools.ui_tour import TOUR_STATES as _STATES
+
+        selected = [s for s in _STATES if s.name == "main_connected_reconnect"]
+        assert selected, "tour lost its connected state"
+        run_tour(tmp_path / "tour_conn", states=selected,
+                 langs=["en"], sizes=[("1040x700", 1040, 700)])
+    finally:
+        for mod_name, mod in (("connection", connection_mod), ("main_window", main_window),
+                              ("network", network), ("hotspot", hotspot),
+                              ("xraycheck", xraycheck), ("metrics", metrics)):
+            _restore(mod, snap[mod_name])
+        _restore(QMessageBox, snap["qmb"])
+        _restore(paths, snap["paths"])
+        i18n.set_language(old_lang)
+        app.setLayoutDirection(old_layout)
+        app.setStyleSheet(old_ss)
+        app.processEvents()
+
+    out_dir = tmp_path / "tour_conn" / "en" / "1040x700"
+    assert (out_dir / "01_main_connected_reconnect.png").exists()
+    assert (tmp_path / "tour_conn" / "findings.txt").exists()

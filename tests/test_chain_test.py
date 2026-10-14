@@ -201,6 +201,6 @@ def test_download_uses_proxy_and_counts_bytes(monkeypatch):
             self.closed = True
     clock = iter([0, 1, 2, 3, 4])
     monkeypatch.setattr(chain_test.time, 'monotonic', lambda: next(clock))
-    monkeypatch.setattr(chain_test.http.client, 'HTTPConnection', Connection)
+    monkeypatch.setattr("http.client.HTTPConnection", Connection)
     assert chain_test._download(1234, 'http://example.test/file', 1, threading.Event()) == 0.004
     assert connections[0].closed

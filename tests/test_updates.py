@@ -121,7 +121,7 @@ def test_default_fetch_sends_the_app_user_agent(monkeypatch):
         captured["url"] = req.full_url
         return FakeResp()
 
-    monkeypatch.setattr(updates.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     release = updates.latest_release()
     assert release.tag == "v1.0.0"
     assert captured["header"].startswith("sushTun/")

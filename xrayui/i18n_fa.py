@@ -15,6 +15,7 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Throughput": "توان عبوری",
     "Baseline": "خط پایه",
     "Diagnostics": "عیب‌یابی",
+    "Run diagnostics": "اجرای عیب‌یابی",
 
     # -- subscription_panel.py -------------------------------------------
     "never": "هرگز",
@@ -127,6 +128,7 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Source IPv4": "IPv4 مبدأ",
     "Gateway": "دروازه",
     "Tunnel ifIndex": "ifIndex تونل",
+    "Tunnel device": "دستگاه تونل",
     "Used this session": "مصرف این نشست",
     "Servers": "سرورها",
     "Filter by name or address…": "فیلتر بر اساس نام یا آدرس…",
@@ -361,6 +363,9 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Name filter": "فیلتر نام",
     "Missing URL": "URL موجود نیست",
     "Subscription URL is required.": "URL اشتراک الزامی است.",
+    "Invalid subscription URL": "URL اشتراک نامعتبر است",
+    "Subscription URL must start with http:// or https://.":
+        "URL اشتراک باید با http:// یا https:// شروع شود.",
     "Invalid name filter": "فیلتر نام نامعتبر است",
 
     # -- core/alerts.py (value+template, see ui/main_window.py._check_alerts) -
@@ -1384,6 +1389,7 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Auto-connect failed: {error}": "اتصال خودکار ناموفق بود: {error}",
     "no active internet interface": "هیچ رابط اینترنتی فعالی وجود ندارد",
     "Test failed: {error}": "تست ناموفق بود: {error}",
+    "Connection failed: {error}": "اتصال ناموفق بود: {error}",
     "Test finished.": "تست تمام شد.",
     "Connect": "اتصال",
     "Disconnect": "قطع اتصال",
@@ -1402,6 +1408,22 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Reconnect now": "اتصال دوباره",
     "Live log": "گزارش زنده",
     "Tools": "ابزارها",
+    "Filter log…": "فیلتر گزارش…",
+    "Copy": "کپی",
+    "Clear": "پاک کردن",
+    "Connect to see xray's output here.": "وصل شوید تا خروجی xray را همین‌جا ببینید.",
+    "Shows only the log lines containing what you type.":
+        "فقط خط‌هایی از گزارش را نشان می‌دهد که متن شما را داشته باشند.",
+    "Type \"error\" to see only the failures.":
+        "«error» را بنویسید تا فقط خطاها را ببینید.",
+    "Copies the log lines you see right now.":
+        "خط‌هایی از گزارش را که همین حالا می‌بینید کپی می‌کند.",
+    "Paste them into a message when asking for help.":
+        "وقتی کمک می‌خواهید، آن‌ها را در پیامتان بچسبانید.",
+    "Empties the log view. New lines keep arriving.":
+        "نمای گزارش را خالی می‌کند. خط‌های جدید همچنان می‌رسند.",
+    "Clear it right before connecting to catch fresh output.":
+        "درست قبل از وصل شدن پاکش کنید تا خروجی تازه را بگیرید.",
     "macOS cannot run a Wi-Fi hotspot while it is itself on Wi-Fi. To share the tunnel, "
     "turn on Settings → Local proxy → Allow other devices on your network, and set this "
     "Mac as the proxy on the other device.":
@@ -1424,7 +1446,6 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Hide sushTun": "پنهان کردن sushTun",
     "Quit sushTun": "خروج از sushTun",
     "Cut": "برش",
-    "Copy": "کپی",
     "Paste": "چسباندن",
     "Select All": "انتخاب همه",
     "Window": "پنجره",
@@ -1432,10 +1453,15 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Help": "راهنما",
     "sushTun Help": "راهنمای sushTun",
     "Start hidden in the menu bar": "شروع پنهان در نوار منو",
+    "No servers": "سروری وجود ندارد.",
     "Delete {n} server(s)?": "{n} سرور حذف شود؟",
     "Active server changed": "سرور فعال تغییر کرد",
     "Clipboard has no importable server link.": "کلیپ‌بورد شامل لینک قابل‌وارد‌کردنی نیست.",
     "Imported {n} server(s).": "{n} سرور وارد شد.",
+    "Imported {n} server(s), skipped {skipped} duplicate(s).":
+        "{n} سرور وارد شد، {skipped} مورد تکراری رد شد.",
+    "Skipped {n} duplicate server(s) — already in the list.":
+        "{n} سرور تکراری رد شد — از قبل در فهرست هست.",
     "Active server set to {name}": "سرور فعال روی {name} تنظیم شد",
     "Active server set to {name}.": "سرور فعال روی {name} تنظیم شد.",
     "Remove {n} failed server(s)?": "{n} سرور ناموفق حذف شود؟",
@@ -1620,6 +1646,12 @@ TRANSLATIONS_FA: dict[str, str] = {
     # -- ui/a-foundation: connection header ----------------------------------
     "Connected": "متصل",
     "Disconnected": "قطع شده",
+    "sushTun — Disconnected": "sushTun — قطع شده",
+    "sushTun — Connecting…": "sushTun — در حال اتصال…",
+    "sushTun — Connected": "sushTun — وصل شده",
+    "sushTun — Connected · {server}": "sushTun — وصل به {server}",
+    "sushTun — Connected · {country}": "sushTun — وصل · {country}",
+    "sushTun — Connected · {server} ({country})": "sushTun — وصل به {server} ({country})",
     "Down / Up": "دانلود / آپلود",
     "This session": "این نشست",
     "More connection actions": "گزینه‌های بیشتر اتصال",
@@ -1790,8 +1822,11 @@ TRANSLATIONS_FA: dict[str, str] = {
     "The template has no proxy outbound for the chain.": "قالب فاقد خروجی proxy برای زنجیره است.",
 
     # -- Chains: card details -----------------------------------------------
+    # The tile units stay short on purpose: at the minimum window width the
+    # metric tiles are ~110px, and the full "مگابیت/ثانیه" pushed value+unit
+    # onto two lines. The tile caption already says Download/دریافت.
     'ms': 'میلی‌ثانیه',
-    'Mbit/s': 'مگابیت/ثانیه',
+    'Mbit/s': 'مگابیت',
     'Tested just now': 'همین الان آزمایش شد',
     'Tested {n} min ago': '{n} دقیقه پیش',
     'Tested {n} hours ago': '{n} ساعت پیش',

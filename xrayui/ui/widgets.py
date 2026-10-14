@@ -4,7 +4,7 @@ from __future__ import annotations
 import html
 from collections.abc import Callable
 
-from PySide6.QtCore import QItemSelection, QItemSelectionModel, QSize, Qt, Signal
+from PySide6.QtCore import QItemSelection, QItemSelectionModel, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -554,12 +554,46 @@ class ProfilePanel(_ServerTableCore):
 
 
 class LogView(QTextEdit):
+    """The live log: a capped buffer with a debounced text filter.
+
+    Filtering must stay cheap on a 5000-line buffer: typing only restarts a
+    single-shot timer (one full re-render per pause, never one per
+    keystroke), and lines appended while a filter is active are matched
+    incrementally instead. The timer is single-shot, so nothing ticks while
+    the view sits idle or hidden.
+    """
+
+    _MAX_LINES = 5000  # mirrors the maximumBlockCount below
+    _FILTER_DELAY_MS = 250
+
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("Log")
         self.setReadOnly(True)
         self.setFont(QFont("Cascadia Code", 10))
         self.document().setMaximumBlockCount(5000)
+        # Every line kept (oldest first, newest win the cap) plus what the
+        # view shows right now, so Copy reproduces exactly the visible text
+        # without an HTML round-trip and the filter can re-render from it.
+        self._lines: list[str] = []
+        self._shown: list[str] = []
+        self._needle = ""
+        self._pending_filter = ""
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(self._FILTER_DELAY_MS)
+        self._debounce.timeout.connect(self._on_filter_timeout)
+        # An empty log says what to do next instead of a blank panel (same
+        # viewport-overlay pattern as the server table's empty hint).
+        self.empty_hint = QLabel(self.viewport())
+        self.empty_hint.setObjectName("Muted")
+        self.empty_hint.setAlignment(Qt.AlignCenter)
+        self.empty_hint.setWordWrap(True)
+        self.empty_hint.setMinimumWidth(280)
+        self.empty_hint.setText(tr("Connect to see xray's output here."))
+        hint_layout = QVBoxLayout(self.viewport())
+        hint_layout.addWidget(self.empty_hint, 0, Qt.AlignCenter)
+        self._update_hint()
 
     @staticmethod
     def _markup(line: str) -> str:
@@ -573,15 +607,59 @@ class LogView(QTextEdit):
         return f'<span style="color:{color}">{html.escape(line)}</span>'
 
     def append_line(self, line: str) -> None:
-        self.append(self._markup(line))
-        self.moveCursor(QTextCursor.End)
+        self.append_lines([line])
 
     def append_lines(self, lines: list[str]) -> None:
         # One append per batch: per-line appends stall the UI on busy logs.
         if not lines:
             return
-        self.append("<br>".join(self._markup(ln) for ln in lines))
+        self._lines.extend(lines)
+        del self._lines[:-self._MAX_LINES]  # cap, newest kept; empty slice when short
+        show = [ln for ln in lines
+                if not self._needle or self._needle in ln.lower()]
+        self._shown.extend(show)
+        del self._shown[:-self._MAX_LINES]
+        self._update_hint()
+        if not show:
+            return
+        self.append("<br>".join(self._markup(ln) for ln in show))
         self.moveCursor(QTextCursor.End)
 
-    def clear_log(self) -> None:
+    def set_filter(self, text: str) -> None:
+        # A keystroke only restarts the timer; the expensive re-render waits
+        # until typing pauses (see _on_filter_timeout).
+        self._pending_filter = text
+        self._debounce.start()
+
+    def _on_filter_timeout(self) -> None:
+        if self._pending_filter.strip().lower() == self._needle:
+            return
+        self._apply_filter()
+
+    def _apply_filter(self) -> None:
+        self._needle = self._pending_filter.strip().lower()
+        self._shown = [ln for ln in self._lines
+                       if not self._needle or self._needle in ln.lower()]
         self.clear()
+        if self._shown:
+            self.append("<br>".join(self._markup(ln) for ln in self._shown))
+            self.moveCursor(QTextCursor.End)
+        self._update_hint()
+
+    def visible_text(self) -> str:
+        """What the view shows right now (filter applied), as plain text."""
+        return "\n".join(self._shown)
+
+    def copy_visible(self) -> None:
+        clipboard_bridge.set_text(self.visible_text())
+
+    def clear_log(self) -> None:
+        self._lines.clear()
+        self._shown.clear()
+        self.clear()
+        self._update_hint()
+
+    def _update_hint(self) -> None:
+        # The hint tracks real output, not the filter: a filter matching
+        # nothing leaves a blank view, which is an answer, not an invitation.
+        self.empty_hint.setVisible(not self._lines)

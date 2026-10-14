@@ -14,10 +14,30 @@ through tr() using the exact same source text the fa table is keyed on.
 """
 from __future__ import annotations
 
-from .i18n_fa import TRANSLATIONS_FA
-
 _SUPPORTED = ("en", "fa")
 _current = "en"
+
+_translations_fa: dict[str, str] | None = None
+
+
+def _fa_table() -> dict[str, str]:
+    """The Persian table, loaded on first use: it is ~1900 entries and only
+    needed when the UI actually runs in Persian, not on every startup."""
+    global _translations_fa
+    if _translations_fa is None:
+        from .i18n_fa import TRANSLATIONS_FA
+
+        _translations_fa = TRANSLATIONS_FA
+    return _translations_fa
+
+
+def __getattr__(name: str):
+    # Lazily re-exported so existing code (and tests) reading
+    # i18n.TRANSLATIONS_FA keeps working without importing the table up
+    # front; the same dict object is returned every time.
+    if name == "TRANSLATIONS_FA":
+        return _fa_table()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def set_language(code: str) -> None:
@@ -34,7 +54,7 @@ def tr(text: str, **params) -> str:
     `.format(**params)` if `params` were given. Never raises: a missing
     key or a translation with the wrong placeholders both fall back to
     the formatted English source."""
-    table = TRANSLATIONS_FA if _current == "fa" else None
+    table = _fa_table() if _current == "fa" else None
     translated = table.get(text, text) if table else text
     if not params:
         return translated

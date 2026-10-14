@@ -18,7 +18,7 @@ def test_macos_backup_strips_loopback(monkeypatch, servers, expected):
     monkeypatch.setattr(posix, "IS_MAC", True)
     monkeypatch.setattr(posix, "mac_service_name", lambda alias: "Wi-Fi")
     calls = []
-    monkeypatch.setattr(posix.proc, "run", lambda args: calls.append(args) or
+    monkeypatch.setattr(posix.proc, "run", lambda args, **_k: calls.append(args) or
                         SimpleNamespace(stdout=servers, returncode=0))
     dns = posix.backup_dns("en0")
     assert dns == DnsState("MACOS", ["Wi-Fi", *expected])
@@ -38,7 +38,7 @@ def test_linux_file_backup_strips_own_loopback(monkeypatch, tmp_path):
 def test_macos_stranded_dns_released_to_automatic(monkeypatch):
     monkeypatch.setattr(posix, "IS_MAC", True)
     calls = []
-    def run(args):
+    def run(args, **_k):
         calls.append(args)
         out = ""
         if args == ["networksetup", "-listnetworkserviceorder"]:

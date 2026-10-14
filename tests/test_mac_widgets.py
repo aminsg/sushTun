@@ -392,6 +392,34 @@ def test_connection_header_reconnect_notice(qapp):
     assert h._notice_label.text() == ""
 
 
+def test_connection_header_meta_line_paints_no_window_bg_band(qapp):
+    # T3-03: the meta line's container must not repaint the window background
+    # (BG #1e1e20) inside the card (SURFACE #2a2a2d) — grab the live header
+    # and sample the lead box's pixels.
+    h = ConnectionHeader()
+    h.resize(680, 140)
+    h.show()
+    qapp.processEvents()
+    pm = h.grab()
+    ratio = pm.devicePixelRatio()
+    img = pm.toImage()
+    box = h._lead_box.geometry()
+    assert box.width() > 50  # sanity: the box actually spans the row
+    bg = QColor(theme.BG)
+    surface = QColor(theme.SURFACE)
+    bad = 0
+    surface_seen = 0
+    for x in range(box.left() + 2, box.right() - 1, 7):
+        for y in (box.center().y(), box.top() + 2, box.bottom() - 2):
+            pixel = QColor(img.pixel(int(x * ratio), int(y * ratio)))
+            if pixel == bg:
+                bad += 1
+            if pixel == surface:
+                surface_seen += 1
+    assert bad == 0, "meta line sits on a window-BG band inside the card"
+    assert surface_seen > 0
+
+
 def test_connection_header_timer(qapp):
     h = ConnectionHeader()
     h.set_timer("00:12")

@@ -30,7 +30,10 @@ def kill_stale() -> None:
     It keeps DEVICE open, so the next start would fail to create it, and the
     connect then died on "TUN device did not appear".
     """
-    proc.run(["pkill", "-f", _own_pattern()])
+    try:
+        proc.run(["pkill", "-f", _own_pattern()], timeout=10)
+    except subprocess.TimeoutExpired:
+        pass  # best-effort sweep: a hung pkill must not stall the teardown
 
 
 class Tun2socks:
@@ -71,12 +74,18 @@ class Tun2socks:
 
     def stop(self) -> None:
         if self._proc is not None:
-            self._proc.terminate()
             try:
-                self._proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
-            self._proc = None
+                self._proc.terminate()
+                try:
+                    # A short grace: SIGTERM drops the utun at once in the
+                    # normal case, so a longer wait only ever delayed a hung
+                    # bridge before the SIGKILL below.
+                    self._proc.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    self._proc.kill()
+                    self._proc.wait(timeout=1)
+            finally:
+                self._proc = None
         kill_stale()
         if self._log is not None:
             try:

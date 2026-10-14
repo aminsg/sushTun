@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import urllib.parse
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThreadPool
@@ -1294,8 +1295,6 @@ class SubscriptionEditDialog(QDialog):
     def __init__(self, sub: Subscription, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("Edit subscription"))
-        # Wide enough for a label, its footnote and the field side by side.
-        self.resize(560, 0)
         self._sub = sub
         # Auto-fill Name from the URL's host, same as the old bare "paste a
         # URL" Add flow -- but only until the user actually types a name of
@@ -1379,6 +1378,12 @@ class SubscriptionEditDialog(QDialog):
         for btn in self.findChildren(QPushButton):
             btn.setAutoDefault(btn is buttons.button(QDialogButtonBox.Save))
         _mark_primary(buttons.button(QDialogButtonBox.Save))
+        # Wide enough that the name-filter placeholder fits unelided, and
+        # tall enough that the wrapping footnotes show every line: a height
+        # of 0 collapses each row to its single-line minimum and cuts the
+        # footnotes mid-sentence. Sized after the layout exists so the
+        # height comes from the real content in this language.
+        self.resize(660, self.sizeHint().height())
 
     def _stop_autofill_name(self, _text: str) -> None:
         self._name_auto = False
@@ -1395,6 +1400,11 @@ class SubscriptionEditDialog(QDialog):
         url = self.f_url.text().strip()
         if not url:
             QMessageBox.warning(self, tr("Missing URL"), tr("Subscription URL is required."))
+            return
+        parts = urllib.parse.urlsplit(url)
+        if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+            QMessageBox.warning(self, tr("Invalid subscription URL"),
+                                tr("Subscription URL must start with http:// or https://."))
             return
         name_filter = self.f_name_filter.text().strip()
         if name_filter:

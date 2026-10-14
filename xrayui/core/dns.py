@@ -74,7 +74,17 @@ def _is_ip(value: str) -> bool:
 def _valid_hostname(host: str) -> bool:
     if len(host) > 253:
         return False
-    return all(_LABEL.match(label) for label in host.rstrip(".").split("."))
+    labels = host.rstrip(".").split(".")
+    if not all(_LABEL.match(label) for label in labels):
+        return False
+    # A dotted quad that is not a valid IP is a typo, not a hostname -- and
+    # no real hostname ends in an all-numeric TLD -- so refuse it here rather
+    # than letting _valid_address accept e.g. 999.999.999.999 as a "hostname".
+    # (The domestic path already refuses such input; this keeps the main
+    # resolver path consistent with it.)
+    if re.fullmatch(r"[0-9]+", labels[-1]):
+        return False
+    return True
 
 
 def _valid_address(entry: str) -> bool:
@@ -160,9 +170,13 @@ def clean_servers(servers) -> list[str]:
     settings.json must degrade to the template, not fail the connect."""
     out: list = []
     for raw in servers or []:
-        # A full DnsServerObject can only be written by hand; pass it through.
+        # A full DnsServerObject can only be written by hand; keep it when its
+        # address is usable, drop it otherwise -- an object with no address
+        # (e.g. {}) is not a valid server and would break the connect.
         if isinstance(raw, dict):
-            if raw not in out:
+            addr = raw.get("address")
+            if (isinstance(addr, str) and addr.strip()
+                    and not validate_server(addr.strip()) and raw not in out):
                 out.append(raw)
             continue
         if not isinstance(raw, str):

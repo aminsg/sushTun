@@ -7,7 +7,6 @@ from __future__ import annotations
 import io
 from math import inf
 
-import segno
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
@@ -42,6 +41,11 @@ def _transport_text(p: Profile) -> str:
         return "socks"
     if proto == "http":
         return "http/tls" if p.security == "tls" else "http"
+    if proto == "hysteria2":
+        # Hysteria2 runs over QUIC/UDP and has no tcp/ws-style network field:
+        # the Profile default ("tcp/none") would claim a transport it never
+        # uses. Display-only; the config builder and share links never read this.
+        return "hy2"
     return f"{p.network}/{p.security}"
 
 
@@ -304,6 +308,10 @@ class QrDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(tr("QR — {name}", name=name))
         self._link = link
+
+        # Local import: segno (~8 MB) is only needed to draw this dialog, and
+        # this module is imported at startup for the server table itself.
+        import segno
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)

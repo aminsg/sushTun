@@ -143,7 +143,7 @@ def test_settings_item_opens_the_settings_window(qapp, tmp_path, monkeypatch):
             self._pages["general"].tun_mtu.setValue(1380)
             return 1
 
-    monkeypatch.setattr(mw, "SettingsWindow", Probe)
+    monkeypatch.setattr("xrayui.ui.settings_window.SettingsWindow", Probe)
     monkeypatch.setattr(mw.app_settings, "save", lambda settings: None)
     win = mw.MainWindow(elevated=False)
     try:

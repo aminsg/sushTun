@@ -588,3 +588,53 @@ def test_parse_reality_pqv_from_link_and_json():
                                                "mldsa65Verify": "PQKEY"}},
     }]}
     assert importer.parse_json(json.dumps(cfg)).pqv == "PQKEY"
+
+
+def _vmess_link(port):
+    import base64 as _b64
+    import json as _json
+    body = _b64.b64encode(_json.dumps(
+        {"ps": "x", "add": "203.0.113.1", "port": port, "id": "u"}).encode()).decode()
+    return "vmess://" + body
+
+
+def test_hostile_vmess_port_does_not_kill_valid_lines():
+    good = ("vless://11111111-1111-1111-1111-111111111111@203.0.113.1:443"
+            "?encryption=none&type=tcp&security=none#good-server")
+    for bad_port in ([80], {"a": 1}):
+        profiles = importer.parse_share_text(good + "\n" + _vmess_link(bad_port))
+        assert [p.name for p in profiles] == ["good-server"]
+
+
+def test_vmess_json_rejects_nonsense_ports():
+    for bad_port in (80.5, True, False, [80], {"a": 1}, "abc", "80.5", 0, 99999, -1):
+        assert importer.parse_share_text(_vmess_link(bad_port)) == [], bad_port
+
+
+def test_vmess_json_accepts_int_and_digit_string_ports():
+    assert importer.parse_share_text(_vmess_link(443))[0].port == 443
+    assert importer.parse_share_text(_vmess_link("8443"))[0].port == 8443
+
+
+def test_deeply_nested_subscription_json_returns_nothing():
+    txt = "[" * 10000 + "]" * 10000
+    assert importer.parse_subscription(txt) == []
+
+
+def test_deeply_nested_vmess_json_is_invalid_not_a_crash():
+    import base64 as _b64
+    body = _b64.b64encode(("[" * 10000 + "]" * 10000).encode()).decode()
+    with pytest.raises(ValueError):
+        importer.parse_vmess("vmess://" + body)
+
+
+def test_config_outbound_with_nonsense_port_is_invalid():
+    def _cfg(port):
+        return json.dumps({"outbounds": [{
+            "tag": "proxy", "protocol": "vless",
+            "settings": {"vnext": [{"address": "1.2.3.4", "port": port,
+                                    "users": [{"id": "u", "encryption": "none"}]}]},
+            "streamSettings": {"network": "tcp", "security": "none"}}]})
+    for bad_port in (80.5, True, [80], {"a": 1}):
+        with pytest.raises(ValueError):
+            importer.parse_json(_cfg(bad_port))

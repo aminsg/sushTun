@@ -39,7 +39,7 @@ def test_large_body_is_rejected_before_parsing(monkeypatch):
         headers = {}
     # Use a small limit to keep the regression cheap.
     monkeypatch.setattr(subscription, "MAX_BODY_BYTES", 128, raising=False)
-    monkeypatch.setattr(subscription.urllib.request, "urlopen",
+    monkeypatch.setattr("urllib.request.urlopen",
                         lambda *a, **k: Response((LINK + "\n").encode() * 20))
     with pytest.raises(ValueError, match="too large"):
         subscription.fetch("https://example.org/sub")

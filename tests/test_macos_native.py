@@ -138,10 +138,21 @@ def test_edit_menu_select_copies_and_pastes(mac_window, monkeypatch):
 
 # -- Dock re-show ------------------------------------------------------------
 
-def test_dock_click_reshows_a_hidden_window(mac_window):
+def test_dock_click_reshows_a_hidden_window_no_tray(mac_window, qapp):
+    # Distinct from test_minimize_hide's tray case: on macOS closeEvent
+    # hides even with no tray icon, and activation must still bring it
+    # back through _hidden_to_tray.
     win = mac_window
-    win.hide()
-    win._on_app_state_changed(Qt.ApplicationActive)
+    win.tray = None
+    win.show()
+    qapp.processEvents()
+    win.close()
+    qapp.processEvents()
+    assert not win.isVisible()
+    assert win._hidden_to_tray is True
+    QApplication.instance().applicationStateChanged.emit(
+        Qt.ApplicationActive)
+    qapp.processEvents()
     assert win.isVisible()
 
 
@@ -149,16 +160,17 @@ def test_activation_leaves_a_visible_window_alone(mac_window):
     win = mac_window
     win.show()
     win.step_label.setText("untouched")
-    win._on_app_state_changed(Qt.ApplicationActive)
+    win._on_application_state_changed(Qt.ApplicationActive)
     assert win.isVisible()
     assert win.step_label.text() == "untouched"
 
 
 def test_activation_does_not_resurrect_a_quitting_window(mac_window):
     win = mac_window
-    win.hide()
+    win.show()
+    win.close()
     win.prepare_quit()
-    win._on_app_state_changed(Qt.ApplicationActive)
+    win._on_application_state_changed(Qt.ApplicationActive)
     assert win.isHidden()
 
 

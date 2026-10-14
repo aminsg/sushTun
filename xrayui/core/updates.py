@@ -22,7 +22,6 @@ project does not have; this is the honest limit of what is checked here.
 from __future__ import annotations
 
 import hashlib
-import http.client
 import json
 import os
 import re
@@ -31,7 +30,6 @@ import stat
 import subprocess
 import sys
 import tempfile
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -88,6 +86,10 @@ class Release:
 
 
 def _default_fetch() -> dict:
+    # Local import: urllib.request drags in ssl/http/email (~7 MB), and this
+    # module is imported at startup (the update check itself runs on a timer).
+    import urllib.request
+
     req = urllib.request.Request(
         _API_URL, headers={"User-Agent": f"sushTun/{__version__}"}
     )
@@ -188,6 +190,8 @@ Cancelled = Callable[[], bool]
 
 
 def _read_url(url: str, timeout: float = 60.0) -> bytes:
+    import urllib.request
+
     req = urllib.request.Request(url, headers={"User-Agent": f"sushTun/{__version__}"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
         return resp.read()
@@ -195,6 +199,9 @@ def _read_url(url: str, timeout: float = 60.0) -> bytes:
 
 def _stream_url(url: str, dest: Path, on_progress: Progress | None,
                 cancelled: Cancelled | None, timeout: float = 60.0) -> None:
+    import http.client
+    import urllib.request
+
     req = urllib.request.Request(url, headers={"User-Agent": f"sushTun/{__version__}"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
         total = int(resp.headers.get("Content-Length") or 0)

@@ -17,6 +17,22 @@ def _no_real_network_teardown_at_exit(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _stop_leaked_log_tailers():
+    # Closing a window hides it to the tray (or Dock on macOS) while the app
+    # keeps running, so MainWindow.close() in a fixture teardown does not stop
+    # its LogTailer thread -- and tests that build a window as a bare local
+    # never even close it. A thread still running when its window is garbage
+    # collected -- or when the interpreter shuts down -- segfaults
+    # intermittently inside QThread teardown. Join stragglers after each test.
+    yield
+    try:
+        from xrayui.ui.log_tailer import LogTailer
+    except ImportError:
+        return
+    LogTailer.stop_all()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_update_checks(monkeypatch, request):
     # MainWindow starts a background GitHub update check during UI tests.
     # On Linux CI, late replies reached already-destroyed windows and caused

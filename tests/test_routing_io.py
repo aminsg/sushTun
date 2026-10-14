@@ -120,3 +120,24 @@ def test_import_invalid_json_returns_nothing():
     sets, skipped = routing_io.import_rules("not json at all")
     assert sets == []
     assert skipped == 0
+
+
+def test_import_deeply_nested_json_returns_nothing():
+    txt = "[" * 10000 + "]" * 10000
+    assert routing_io.import_rules(txt) == ([], 0)
+
+
+def test_import_routing_item_with_empty_ruleset_imports_nothing():
+    sets, _skipped = routing_io.import_rules('{"remarks":"t","ruleSet":"[]"}')
+    assert sets == []
+
+
+def test_import_routing_items_with_empty_ruleset_imports_nothing():
+    text = json.dumps({"routingItems": [
+        {"remarks": "empty", "ruleSet": "[]"},
+        {"remarks": "full", "ruleSet": json.dumps(
+            [{"remarks": "r", "outboundTag": "proxy", "domain": ["example.com"]}]
+        )},
+    ]})
+    sets, _skipped = routing_io.import_rules(text)
+    assert [s["name"] for s in sets] == ["full"]
