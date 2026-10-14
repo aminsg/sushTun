@@ -782,6 +782,8 @@ def test_close_hides_to_the_tray_and_keeps_the_tunnel_running(window):
         window.tray = None
 
 
+@pytest.mark.skipif(sys.platform == "darwin",
+                    reason="macOS hides to the Dock instead of quitting")
 def test_close_without_a_tray_shuts_the_window_down(window):
     window.tray = None
     window.show()

@@ -37,6 +37,9 @@ def window(qapp, tmp_path, monkeypatch):
     from xrayui.ui.main_window import MainWindow
     win = MainWindow(elevated=False)
     yield win
+    # A bare close() only hides on macOS (the tunnel keeps running), which
+    # would leave the log tailer thread behind; quit for real instead.
+    win.prepare_quit()
     win.close()
     qapp.processEvents()
 
@@ -154,3 +157,113 @@ def test_header_skips_settext_when_nothing_changed(qapp, monkeypatch):
     assert len(calls) == first, "re-setting the same values must not touch labels"
     h.set("throughput", "2.0 Mbit/s")
     assert len(calls) > first
+
+
+# -- tray state while hidden -------------------------------------------------
+# Offscreen there is no system tray, so these install a stub that records
+# tooltip changes. The point: connection-state changes reach the tray
+# through events, never through the status tick that stops while hidden.
+class _TrayStub:
+    def __init__(self):
+        self.tips: list[str] = []
+
+    def setToolTip(self, tip: str) -> None:
+        self.tips.append(tip)
+
+
+@pytest.fixture
+def tray_window(window, monkeypatch):
+    from xrayui.core.profiles import Profile
+    a = window.store.save(Profile(name="A", address="a.example.com",
+                                  port=443, id="u1"))
+    b = window.store.save(Profile(name="B", address="b.example.com",
+                                  port=8443, id="u2"))
+    window.store.set_active(a.uid)
+    window._reload_profiles()
+    window.tray = _TrayStub()
+    window._tray_tip = None
+    # Exit detection would probe the real network from a pool worker.
+    monkeypatch.setattr(window, "_detect_exit_after_connect", lambda: None)
+    return window, a, b
+
+
+def test_hidden_connect_updates_the_tray_tooltip(tray_window, qapp, monkeypatch):
+    window, a, _b = tray_window
+    window.hide()
+    _pump(qapp)
+    assert not window.timer.isActive()
+    monkeypatch.setattr(window.conn, "is_connected", lambda: True)
+    window._on_conn_done()
+    _pump(qapp)
+    assert window.tray.tips, "a hidden connect must still reach the tray"
+    assert "A" in window.tray.tips[-1]
+    assert window.tray.tips[-1] != "sushTun"
+    assert not window.timer.isActive(), "no timer restart for the tray update"
+    # The re-armed route supervision keeps watching the tunnel while hidden.
+    assert window.route_timer.isActive()
+
+
+def test_hidden_disconnect_resets_the_tray_tooltip(tray_window, qapp, monkeypatch):
+    window, _a, _b = tray_window
+    monkeypatch.setattr(window.conn, "is_connected", lambda: True)
+    window._on_conn_done()
+    assert window.tray.tips[-1] != "sushTun"
+    window.hide()
+    _pump(qapp)
+    monkeypatch.setattr(window.conn, "is_connected", lambda: False)
+    window._on_conn_done()
+    _pump(qapp)
+    assert window.tray.tips[-1] == "sushTun"
+    assert not window.timer.isActive()
+
+
+def test_hidden_failure_resets_the_tray_tooltip(tray_window, qapp, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    window, _a, _b = tray_window
+    monkeypatch.setattr(window.conn, "is_connected", lambda: True)
+    window._on_conn_done()
+    window.hide()
+    _pump(qapp)
+    monkeypatch.setattr(window.conn, "is_connected", lambda: False)
+    monkeypatch.setattr(QMessageBox, "warning",
+                        staticmethod(lambda *a, **k: None))
+    window._on_conn_done(error="boom")
+    _pump(qapp)
+    assert window.tray.tips[-1] == "sushTun"
+    assert not window.timer.isActive()
+
+
+def test_hidden_server_switch_updates_the_tray_tooltip(tray_window, qapp, monkeypatch):
+    window, _a, b = tray_window
+    monkeypatch.setattr(window.conn, "is_connected", lambda: True)
+    window.hide()
+    _pump(qapp)
+    window._set_active(b.uid)
+    _pump(qapp)
+    assert "B" in window.tray.tips[-1], "switching servers must reach the tray hidden"
+    assert not window.timer.isActive()
+
+
+def test_hidden_reconnect_keeps_the_tray_current(tray_window, qapp, monkeypatch):
+    window, _a, _b = tray_window
+    monkeypatch.setattr(window.conn, "is_connected", lambda: True)
+    window.hide()
+    _pump(qapp)
+    before = list(window.tray.tips)
+    window._on_conn_done()
+    _pump(qapp)
+    assert window.tray.tips[-1] != "sushTun"
+    assert len(window.tray.tips) >= len(before)
+    assert not window.timer.isActive()
+
+
+def test_hidden_exit_detection_lands_without_the_tick(tray_window, qapp, monkeypatch):
+    from types import SimpleNamespace
+    window, a, _b = tray_window
+    monkeypatch.setattr(window.conn, "is_connected", lambda: True)
+    window.hide()
+    _pump(qapp)
+    window._on_exit_detected(a.uid, SimpleNamespace(country="de", ip="9.9.9.9"))
+    _pump(qapp)
+    assert window.results.get(a.uid) == {"country": "de", "exit_ip": "9.9.9.9"}
+    assert not window.timer.isActive()

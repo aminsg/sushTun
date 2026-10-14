@@ -269,6 +269,9 @@ class MainWindow(QMainWindow):
         self._handle = None
         self._edge_cursor = False
         self._quitting = False
+        # Set by the closeEvent hide path, cleared by _show_window: only a
+        # window the user hid may pop back on Dock/app activation.
+        self._hidden_to_tray = False
         self._update_release = None
         self._told_about_tray = False
         self._current_page = PAGE_SERVERS
@@ -296,6 +299,7 @@ class MainWindow(QMainWindow):
         self._test_cancel: threading.Event | None = None
         self._geo_updating = False
         self._subtitle_pix = None
+        self._tray_tip: str | None = None
 
         self.stepReceived.connect(self._on_step)
         self.testResultReceived.connect(self._on_test_result)
@@ -303,6 +307,12 @@ class MainWindow(QMainWindow):
         self.exitDetected.connect(self._on_exit_detected)
         self._build_ui(elevated)
         self._build_tray()
+        # Clicking the Dock icon with no visible window only activates the
+        # app; without this nothing brings a hidden window back.
+        app = QApplication.instance()
+        if app is not None:
+            app.applicationStateChanged.connect(
+                self._on_application_state_changed)
         self._refresh_routing_combo()
 
         self.tailer = LogTailer()
@@ -388,6 +398,7 @@ class MainWindow(QMainWindow):
                 self._on_step(tr("Auto-connect failed: {error}", error=error))
                 return
             self.btn_reconnect.setVisible(False)
+            self._refresh_tray_state()
             self._refresh_status()
             self._detect_exit_after_connect()
 
@@ -648,6 +659,30 @@ class MainWindow(QMainWindow):
             if reason == QSystemTrayIcon.Trigger else None)
         self.tray.show()
         QApplication.instance().setQuitOnLastWindowClosed(False)
+        self._refresh_tray_state()
+
+    def _refresh_tray_state(self) -> None:
+        """Bring the tray tooltip in line with the connection state.
+
+        Called from every connection-state change (connect, disconnect,
+        failure, server switch, reconnect, exit detection) instead of the
+        status tick, so the tray stays correct while the window is hidden
+        and its tick is stopped. Only the tooltip text is owned here; the
+        icon artwork belongs to feat/tray-flag, which hooks the same
+        connection-state changes.
+        """
+        if self.tray is None:
+            return
+        if self.conn.is_connected():
+            profile = self._connected_profile()
+            tip = f"sushTun — {tr('Connected')}"
+            if profile is not None:
+                tip += f" · {profile.name}"
+        else:
+            tip = "sushTun"
+        if tip != self._tray_tip:
+            self._tray_tip = tip
+            self.tray.setToolTip(tip)
 
     def _build_mac_menu(self) -> None:
         """The macOS menu bar, with Quit and Settings in the app menu.
@@ -673,10 +708,19 @@ class MainWindow(QMainWindow):
         menu.addAction(self.act_quit)
 
     def _show_window(self) -> None:
+        self._hidden_to_tray = False
         self.showNormal()
         self.raise_()
         self.activateWindow()
         self._refresh_status()
+
+    def _on_application_state_changed(self, state) -> None:
+        # A login launch that never showed stays in the tray until the tray
+        # menu or a second launch asks for it; only a window the user hid
+        # comes back on activation (Dock click, Cmd+Tab).
+        if (state == Qt.ApplicationActive
+                and self._hidden_to_tray and not self._quitting):
+            self._show_window()
 
     def prepare_quit(self) -> None:
         """The app is quitting: the close that follows must not hide to the tray."""
@@ -820,6 +864,7 @@ class MainWindow(QMainWindow):
         self.store.set_active(uid)
         self.profiles.set_active(uid)
         self._rebuild_servers_tray_menu()
+        self._refresh_tray_state()
         # A click in the server table lands here too, and used to change the
         # active server in silence: the tunnel kept carrying the old one while
         # the status card already showed the new one's address. Only a server
@@ -929,6 +974,7 @@ class MainWindow(QMainWindow):
                 if chain_uid:
                     if self.conn.is_connected() and self.conn.state.chain_uid == chain_uid:
                         self._chain_exit = (chain_uid, result)
+                        self._refresh_tray_state()
                         self._show_exit_of_connected()
                 else:
                     self.exitDetected.emit(uid, result)
@@ -939,6 +985,7 @@ class MainWindow(QMainWindow):
         fields = {"country": info.country, "exit_ip": info.ip}
         self.results.set(uid, **fields)
         self.profiles.update_detail(uid, fields)
+        self._refresh_tray_state()
         self._refresh_status_subtitle()
         self._show_exit_of_connected()
 
@@ -1323,12 +1370,19 @@ class MainWindow(QMainWindow):
         if self._busy:
             return
         self._set_busy(True)
+        # Immediate feedback on the UI thread: the worker only reports
+        # "Disconnecting..." once it is scheduled, which left the button
+        # feeling dead on a loaded machine. The header keeps showing
+        # Connected until the teardown actually finishes (see _on_conn_done),
+        # so nobody acts on a network that is not safe yet.
+        self.step_label.setText(tr("Disconnecting..."))
         self._run_async(self.conn.disconnect, self._on_conn_done)
 
     def _cleanup(self) -> None:
         if self._busy:
             return
         self._set_busy(True)
+        self.step_label.setText(tr("Disconnecting..."))
         self._run_async(self.conn.cleanup, self._on_conn_done)
 
     def _on_conn_done(self, result=None, error: str | None = None) -> None:
@@ -1337,6 +1391,10 @@ class MainWindow(QMainWindow):
             self.step_label.setText(error)
             QMessageBox.warning(self, tr("Connection"), error)
         self.btn_reconnect.setVisible(False)
+        self._refresh_tray_state()
+        # A connect/disconnect that lands while hidden flips what the
+        # polling policy must supervise (route check) — re-arm it.
+        self._apply_polling_policy()
         self._refresh_status()
         self._reload_chains()
         if not error and self.conn.is_connected():
@@ -1607,6 +1665,7 @@ class MainWindow(QMainWindow):
         if not profile:
             return
         self._set_busy(True)
+        self.step_label.setText(tr("Disconnecting..."))
 
         def work():
             self.conn.disconnect()
@@ -2041,16 +2100,22 @@ class MainWindow(QMainWindow):
             self.frame.style().polish(self.frame)
 
     def closeEvent(self, event) -> None:
-        if self.tray is not None and not self._quitting:
+        # macOS keeps the app in the Dock, so closing hides even with no
+        # tray icon (the Dock or a second launch brings it back); quitting
+        # the tunnel stays Cmd+Q / Quit, which arrives with _quitting set.
+        if (self.tray is not None or sys.platform == "darwin") \
+                and not self._quitting:
             event.ignore()
             self.hide()
+            self._hidden_to_tray = True
             if not self._told_about_tray:
                 self._told_about_tray = True
-                self.tray.showMessage(
-                    "sushTun",
-                    tr("Still running here. Quit from this icon's menu, "
-                       "or press Ctrl+Q."),
-                    QSystemTrayIcon.Information, 5000)
+                if self.tray is not None:
+                    self.tray.showMessage(
+                        "sushTun",
+                        tr("Still running here. Quit from this icon's menu, "
+                           "or press Ctrl+Q."),
+                        QSystemTrayIcon.Information, 5000)
             return
         for t in (self.timer, self.alert_timer, self.autorefresh_timer,
                   self.route_timer, self.geo_timer, self.update_check_timer):
