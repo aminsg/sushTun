@@ -234,6 +234,29 @@ class _Toolbar(QWidget):
 
 # ── main window ──────────────────────────────────────────────────────────
 
+def _import_key(p: Profile) -> tuple:
+    """Identity for import duplicate detection: same protocol, address, port
+    and credential -- the same key _remove_duplicates uses for the stored
+    list, so "already imported" means exactly what that cleanup would delete."""
+    return ((p.protocol or "").lower(), p.address, p.port, p.id)
+
+
+def _drop_duplicates(
+    profiles: list[Profile], existing: list[Profile],
+) -> tuple[list[Profile], int]:
+    """Split `profiles` into (fresh, skipped_count), dropping exact duplicates
+    both within the import itself and against the already-stored `existing`."""
+    seen = {_import_key(p) for p in existing}
+    fresh: list[Profile] = []
+    for p in profiles:
+        key = _import_key(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        fresh.append(p)
+    return fresh, len(profiles) - len(fresh)
+
+
 class MainWindow(QMainWindow):
     stepReceived = Signal(str)
     testResultReceived = Signal(str, object, object)
@@ -750,13 +773,24 @@ class MainWindow(QMainWindow):
         if dlg.subscription_url:
             self._keep_as_subscription(dlg.subscription_url)
             return
+        fresh, skipped = _drop_duplicates(dlg.profiles, self.store.list())
+        if not fresh:
+            if skipped:
+                self.step_label.setText(
+                    tr("Skipped {n} duplicate server(s) — already in the list.",
+                       n=skipped))
+            return
         first = None
-        for p in dlg.profiles:
+        for p in fresh:
             self.store.save(p)
             first = first or p
         if first and not self.store.active_uid():
             self.store.set_active(first.uid)
         self._reload_profiles()
+        if skipped:
+            self.step_label.setText(
+                tr("Imported {n} server(s), skipped {skipped} duplicate(s).",
+                   n=len(fresh), skipped=skipped))
 
     def _edit(self, uid: str) -> None:
         profile = self.store.get(uid)
@@ -823,18 +857,35 @@ class MainWindow(QMainWindow):
         if url:
             self._keep_as_subscription(url)
             return
-        profiles = importer.parse_share_text(text)
-        if not profiles:
-            self.step_label.setText(
-                tr("Clipboard has no importable server link."))
+        try:
+            profiles = importer.parse_share_text(text)
+        except Exception:
+            # A hostile clipboard line must never raise out of this Qt slot
+            # (a paste would silently die with a traceback); report it the
+            # same way as any other unimportable content.
+            profiles = []
+        fresh, skipped = _drop_duplicates(profiles, self.store.list())
+        if not fresh:
+            if skipped:
+                self.step_label.setText(
+                    tr("Skipped {n} duplicate server(s) — already in the list.",
+                       n=skipped))
+            else:
+                self.step_label.setText(
+                    tr("Clipboard has no importable server link."))
             return
-        for p in profiles:
+        for p in fresh:
             self.store.save(p)
         if not self.store.active_uid():
-            self.store.set_active(profiles[0].uid)
+            self.store.set_active(fresh[0].uid)
         self._reload_profiles()
-        self.step_label.setText(
-            tr("Imported {n} server(s).", n=len(profiles)))
+        if skipped:
+            self.step_label.setText(
+                tr("Imported {n} server(s), skipped {skipped} duplicate(s).",
+                   n=len(fresh), skipped=skipped))
+        else:
+            self.step_label.setText(
+                tr("Imported {n} server(s).", n=len(fresh)))
 
     # ── speed test --------------------------------------------------------
 

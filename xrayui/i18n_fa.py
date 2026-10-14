@@ -1416,6 +1416,10 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Active server changed": "سرور فعال تغییر کرد",
     "Clipboard has no importable server link.": "کلیپ‌بورد شامل لینک قابل‌وارد‌کردنی نیست.",
     "Imported {n} server(s).": "{n} سرور وارد شد.",
+    "Imported {n} server(s), skipped {skipped} duplicate(s).":
+        "{n} سرور وارد شد، {skipped} مورد تکراری رد شد.",
+    "Skipped {n} duplicate server(s) — already in the list.":
+        "{n} سرور تکراری رد شد — از قبل در فهرست هست.",
     "Active server set to {name}": "سرور فعال روی {name} تنظیم شد",
     "Active server set to {name}.": "سرور فعال روی {name} تنظیم شد.",
     "Remove {n} failed server(s)?": "{n} سرور ناموفق حذف شود؟",
