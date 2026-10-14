@@ -16,8 +16,13 @@ def read_new_lines(path: Path, pos: int | None) -> tuple[list[str], int]:
 
     `pos` of None means "first read": start `TAIL_BYTES` from the end so only
     recent context is shown. Returns the new lines and the updated offset.
+    A missing file (fresh install, rotated log) reads as "no new lines"
+    instead of raising -- the follower polls and the file may appear later.
     """
-    size = path.stat().st_size
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        return [], pos if pos is not None else 0
     if pos is None:
         start = max(0, size - TAIL_BYTES)
         drop_partial = start > 0
