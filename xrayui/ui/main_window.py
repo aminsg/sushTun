@@ -263,6 +263,9 @@ class MainWindow(QMainWindow):
         self._handle = None
         self._edge_cursor = False
         self._quitting = False
+        # Set by the closeEvent hide path, cleared by _show_window: only a
+        # window the user hid may pop back on Dock/app activation.
+        self._hidden_to_tray = False
         self._update_release = None
         self._told_about_tray = False
         self._current_page = PAGE_SERVERS
@@ -296,6 +299,12 @@ class MainWindow(QMainWindow):
         self.exitDetected.connect(self._on_exit_detected)
         self._build_ui(elevated)
         self._build_tray()
+        # Clicking the Dock icon with no visible window only activates the
+        # app; without this nothing brings a hidden window back.
+        app = QApplication.instance()
+        if app is not None:
+            app.applicationStateChanged.connect(
+                self._on_application_state_changed)
         self._refresh_routing_combo()
 
         self.tailer = LogTailer()
@@ -658,10 +667,19 @@ class MainWindow(QMainWindow):
         menu.addAction(self.act_quit)
 
     def _show_window(self) -> None:
+        self._hidden_to_tray = False
         self.showNormal()
         self.raise_()
         self.activateWindow()
         self._refresh_status()
+
+    def _on_application_state_changed(self, state) -> None:
+        # A login launch that never showed stays in the tray until the tray
+        # menu or a second launch asks for it; only a window the user hid
+        # comes back on activation (Dock click, Cmd+Tab).
+        if (state == Qt.ApplicationActive
+                and self._hidden_to_tray and not self._quitting):
+            self._show_window()
 
     def prepare_quit(self) -> None:
         """The app is quitting: the close that follows must not hide to the tray."""
@@ -1963,16 +1981,22 @@ class MainWindow(QMainWindow):
             self.frame.style().polish(self.frame)
 
     def closeEvent(self, event) -> None:
-        if self.tray is not None and not self._quitting:
+        # macOS keeps the app in the Dock, so closing hides even with no
+        # tray icon (the Dock or a second launch brings it back); quitting
+        # the tunnel stays Cmd+Q / Quit, which arrives with _quitting set.
+        if (self.tray is not None or sys.platform == "darwin") \
+                and not self._quitting:
             event.ignore()
             self.hide()
+            self._hidden_to_tray = True
             if not self._told_about_tray:
                 self._told_about_tray = True
-                self.tray.showMessage(
-                    "sushTun",
-                    tr("Still running here. Quit from this icon's menu, "
-                       "or press Ctrl+Q."),
-                    QSystemTrayIcon.Information, 5000)
+                if self.tray is not None:
+                    self.tray.showMessage(
+                        "sushTun",
+                        tr("Still running here. Quit from this icon's menu, "
+                           "or press Ctrl+Q."),
+                        QSystemTrayIcon.Information, 5000)
             return
         for t in (self.timer, self.alert_timer, self.autorefresh_timer,
                   self.route_timer, self.geo_timer):
