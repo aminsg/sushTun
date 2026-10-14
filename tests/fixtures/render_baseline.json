@@ -58,6 +58,7 @@
       }
     ],
     "log": {
+      "access": "none",
       "loglevel": "warning"
     },
     "outbounds": [
@@ -199,6 +200,7 @@
       }
     ],
     "log": {
+      "access": "none",
       "loglevel": "warning"
     },
     "outbounds": [
@@ -344,6 +346,7 @@
       }
     ],
     "log": {
+      "access": "none",
       "loglevel": "warning"
     },
     "outbounds": [
@@ -479,6 +482,7 @@
       }
     ],
     "log": {
+      "access": "none",
       "loglevel": "warning"
     },
     "outbounds": [
@@ -623,6 +627,7 @@
       }
     ],
     "log": {
+      "access": "none",
       "loglevel": "warning"
     },
     "outbounds": [
@@ -771,6 +776,7 @@
       }
     ],
     "log": {
+      "access": "none",
       "loglevel": "warning"
     },
     "outbounds": [
@@ -916,6 +922,7 @@
       }
     ],
     "log": {
+      "access": "none",
       "loglevel": "warning"
     },
     "outbounds": [
@@ -1057,6 +1064,7 @@
       }
     ],
     "log": {
+      "access": "none",
       "loglevel": "warning"
     },
     "outbounds": [

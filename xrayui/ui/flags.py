@@ -6,6 +6,8 @@ flags (Japan, Finland) from dissolving into a light background.
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer
@@ -15,8 +17,10 @@ from ..core import geo_exit
 FLAG_W, FLAG_H = 20, 15
 _RADIUS = 3.0
 
-_cache: dict[tuple, QPixmap] = {}
-_icons: dict[int, QIcon] = {}
+# Every country × size × screen-scale pixmap is a few KB; ~250 countries still
+# fit easily, but the cache must not grow without bound over a long session
+# (each new monitor scale used to add entries forever).
+_FLAG_CACHE_SIZE = 256
 
 
 def _device_ratio() -> float:
@@ -24,16 +28,8 @@ def _device_ratio() -> float:
     return screen.devicePixelRatio() if screen else 1.0
 
 
-def flag_pixmap(code: str | None, width: int = FLAG_W, height: int = FLAG_H) -> QPixmap | None:
-    code = geo_exit.normalize(code)
-    if not code:
-        return None
-    dpr = _device_ratio()
-    key = (code, width, height, dpr)
-    cached = _cache.get(key)
-    if cached is not None:
-        return cached
-
+@lru_cache(maxsize=_FLAG_CACHE_SIZE)
+def _render(code: str, width: int, height: int, dpr: float) -> QPixmap | None:
     renderer = QSvgRenderer(str(geo_exit.flag_path(code)))
     if not renderer.isValid():
         return None
@@ -55,15 +51,24 @@ def flag_pixmap(code: str | None, width: int = FLAG_W, height: int = FLAG_H) -> 
     inset = rect.adjusted(0.5, 0.5, -0.5, -0.5)
     p.drawRoundedRect(inset, _RADIUS - 0.5, _RADIUS - 0.5)
     p.end()
-    _cache[key] = pix
     return pix
 
 
-def flag_icon(code: str | None) -> QIcon | None:
-    pix = flag_pixmap(code)
-    if pix is None:
+@lru_cache(maxsize=_FLAG_CACHE_SIZE)
+def _render_icon(code: str, width: int, height: int, dpr: float) -> QIcon | None:
+    pix = _render(code, width, height, dpr)
+    return QIcon(pix) if pix is not None else None
+
+
+def flag_pixmap(code: str | None, width: int = FLAG_W, height: int = FLAG_H) -> QPixmap | None:
+    code = geo_exit.normalize(code)
+    if not code:
         return None
-    icon = _icons.get(id(pix))
-    if icon is None:
-        icon = _icons[id(pix)] = QIcon(pix)
-    return icon
+    return _render(code, width, height, _device_ratio())
+
+
+def flag_icon(code: str | None) -> QIcon | None:
+    code = geo_exit.normalize(code)
+    if not code:
+        return None
+    return _render_icon(code, FLAG_W, FLAG_H, _device_ratio())

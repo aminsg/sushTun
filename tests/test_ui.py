@@ -464,7 +464,7 @@ def test_open_settings_reloads_profiles_and_tray_after_a_restore(window, monkeyp
         def restored(self):
             return True
 
-    monkeypatch.setattr("xrayui.ui.main_window.SettingsWindow", FakeDialog)
+    monkeypatch.setattr("xrayui.ui.settings_window.SettingsWindow", FakeDialog)
     monkeypatch.setattr(window.store, "list", lambda: [])
     monkeypatch.setattr(window.store, "active_uid", lambda: None)
     monkeypatch.setattr(window.conn, "is_connected", lambda: True)
@@ -1185,8 +1185,7 @@ def test_add_sub_uses_the_edit_dialog(window, monkeypatch):
         def result_subscription(self):
             return created["sub"]
 
-    import xrayui.ui.main_window as main_window_mod
-    monkeypatch.setattr(main_window_mod, "SubscriptionEditDialog", FakeDialog)
+    monkeypatch.setattr("xrayui.ui.dialogs.SubscriptionEditDialog", FakeDialog)
     monkeypatch.setattr(window, "_refresh_sub", lambda uid: None)
     window._add_sub()
 
@@ -1817,9 +1816,7 @@ def test_settings_that_xray_reads_at_startup_ask_for_a_reconnect(
         def restored(self):
             return False
 
-    import xrayui.ui.main_window as main_window_mod
-
-    monkeypatch.setattr(main_window_mod, "SettingsWindow", _Dlg)
+    monkeypatch.setattr("xrayui.ui.settings_window.SettingsWindow", _Dlg)
     window._open_settings()
 
     assert reconnects and reconnects[0].endswith("changed")
@@ -1967,7 +1964,6 @@ def test_paste_import_never_raises_on_hostile_vmess_line(window):
 
 def test_import_dialog_path_skips_duplicates_and_reports(window, monkeypatch):
     from xrayui.core import importer as importer_mod
-    from xrayui.ui import main_window as main_window_mod
 
     dup_link = ("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
                 "?encryption=none&type=tcp&security=none#Dup")
@@ -1982,7 +1978,7 @@ def test_import_dialog_path_skips_duplicates_and_reports(window, monkeypatch):
         def exec(self):
             return True
 
-    monkeypatch.setattr(main_window_mod, "ImportDialog", lambda _parent: _Dlg())
+    monkeypatch.setattr("xrayui.ui.dialogs.ImportDialog", lambda _parent: _Dlg())
     window._import()
     assert sorted(p.name for p in window.store.list()) == ["Dup", "New"]
     assert "skipped 1 duplicate" in window.step_label.text()

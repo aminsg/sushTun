@@ -8,7 +8,6 @@ published in that format (e.g. Chocolate4U's Iran rules).
 from __future__ import annotations
 
 import json
-import urllib.request
 import uuid
 from collections.abc import Callable
 
@@ -160,11 +159,15 @@ def import_rules(text: str, fetch: Fetch | None = None) -> tuple[list[dict], int
 
 
 def _default_fetch(url: str, timeout: float = 20.0) -> str:
+    # Local import: urllib.request drags in ssl/http/email (~7 MB), and this
+    # module loads at startup via the routing page, long before any URL import.
+    import urllib.request
+
     # Same root-process hazard as subscription.fetch (a hand-edited file
     # could point this at file://), so the same allowlist applies; the
-    # redirect guard comes along for free, since importing subscription
-    # installs the http-only opener urlopen() runs through.
+    # redirect guard is installed by subscription._opener() on first use.
     subscription._require_http_url(url)
+    subscription._opener()
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (checked http(s) above)
         raw = resp.read(subscription.MAX_BODY_BYTES + 1)

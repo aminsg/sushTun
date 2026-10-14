@@ -4,6 +4,8 @@
 
 ### New
 - **Menu-bar icon shows the connection at a glance.** Disconnected, the menu-bar (tray) icon is the sushTun mascot; connected, it becomes the flag of the country your traffic really exits from, and switches with it. When the country is unknown it shows the mascot with a green dot instead of a wrong flag, amber while connecting, and the tooltip names the state, the server and the country.
+- **Lighter and faster to start.** Heavy pieces the window doesn't need right away (the QR-code library, the network stack behind update/subscription/geo checks, the settings and import dialogs, the Persian translation table in English mode) now load only when first used, and the flag icons cache is bounded. Startup uses about 6 MB less memory and the macOS app bundle shrank by ~27 MB (unused Qt pieces like QtQml, QtQuick, QtPdf and Qt's own translations are no longer shipped).
+- **Quieter tunnel logging.** Xray no longer writes a line to the log for every single connection (that output landed in `xray.log` and kept the log follower and the Activity page busy); only real warnings and errors are logged, as before.
 
 ### Fixed
 - **Disconnecting is fast now.** The button used to leave the window looking connected for seconds while a dozen network commands ran one by one, and a stuck helper could hold the disconnect open with no bound at all. The button now says it is disconnecting at once, the cleanup steps run side by side, and every helper call gives up after a few seconds instead of hanging forever.
@@ -16,6 +18,8 @@
 
 ### چی اضافه شده
 - **آیکون بالای صفحه وضعیت اتصال رو یه نگاه نشون می‌ده.** وقتی وصل نیستی آیکون همون عروسک sushTunـه؛ وقتی وصلی، پرچم همون کشوریه که ترافیکت واقعاً ازش بیرون می‌زنه و باهاش عوض می‌شه. اگه کشور معلوم نباشه به‌جای پرچم اشتباه، عروسک رو با یه نقطه‌ی سبز نشون می‌ده، موقع وصل شدن نارنجیه، و اگه موس رو نگه داری وضعیت و اسم سرور و کشور رو می‌گه.
+- **سبک‌تر و سریع‌تر بالا میاد.** چیزهای سنگینی که پنجره همون لحظه‌ی اول لازمشون نداره (کتابخونه‌ی QR، بخش شبکه‌ی آپدیت و سابسکریپشن و geo، پنجره‌های تنظیمات و import، جدول ترجمه‌ی فارسی تو حالت انگلیسی) حالا فقط وقتی لازم بشن لود می‌شن، و حافظه‌ی موقت آیکون پرچم‌ها هم سقف داره. مصرف حافظه موقع بالا اومدن حدود ۶ مگ کمتر شده و حجم نسخه‌ی مک هم حدود ۲۷ مگ کم شده (تیکه‌های اضافه‌ی Qt مثل QtQml و QtPdf دیگه همراهش نیستن).
+- **لاگ تونل خلوت‌تر شد.** دیگه Xray برای هر تک‌تک اتصال یه خط لاگ نمی‌نویسه (اون خط‌ها می‌رفتن تو xray.log و صفحه‌ی Activity رو مشغول نگه می‌داشتن)؛ مثل قبل فقط هشدارها و خطاهای واقعی لاگ می‌شن.
 
 ### چی درست شده
 - **قطع کردن سریع شد.** قبلاً وقتی Disconnect رو می‌زدی، برنامه چند ثانیه همون‌جوری وصل نشون می‌داد چون یه مشت دستور شبکه رو دونه‌دونه اجرا می‌کرد، و اگه یه ابزار گیر می‌کرد قطع شدن دیگه هیچ‌وقت تموم نمی‌شد. حالا دکمه همون لحظه می‌گه داره قطع می‌کنه، تمیزکاری‌ها با هم انجام می‌شن، و هر دستوری که گیر کنه بعد چند ثانیه بی‌خیالش می‌شه.

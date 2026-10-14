@@ -47,6 +47,16 @@ def test_stats_injection():
     assert out["routing"]["rules"][0]["inboundTag"] == ["api"]
 
 
+def test_access_log_stays_disabled_and_error_log_stays_warning():
+    # An unset access log goes to stdout, which the app redirects into
+    # xray.log: a line per connection, forever. "none" keeps the log to real
+    # problems; "warning" (not "error"/"none") stays because the connect path
+    # reads the last log line to tell a busy port from other failures.
+    out = json.loads(render.build_text(parse_vless(SAMPLE), "Wi-Fi", TEMPLATE))
+    assert out["log"]["access"] == "none"
+    assert out["log"]["loglevel"] == "warning"
+
+
 def test_placeholder_fully_substituted():
     text = render.build_text(parse_vless(SAMPLE), "Ethernet 2", TEMPLATE)
     assert "__IFACE__" not in text and "__INTERFACE__" not in text

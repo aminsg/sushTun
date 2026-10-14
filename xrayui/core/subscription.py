@@ -1,11 +1,11 @@
 """Subscriptions: fetch a sub URL, parse quota/expiry, and refresh profiles."""
 from __future__ import annotations
 
+import functools
 import json
 import re
 import time
 import urllib.parse
-import urllib.request
 import uuid
 from dataclasses import asdict, dataclass, field
 
@@ -31,31 +31,58 @@ def _require_http_url(url: str) -> None:
         raise ValueError("subscription URL must start with http:// or https://")
 
 
-class _HttpOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Refuse redirects that hop to another scheme (https -> file://).
+def _redirect_handler_class():
+    """The http-only redirect handler class, defined on first use.
 
-    A panel that answers a subscription fetch with "Location: file://…"
-    must not make this root process read local files, so the hop is
-    refused before anything is read from the new URL. build_opener()
-    drops its default HTTPRedirectHandler when given one of its
-    subclasses, so an opener built with this class has exactly this
-    handler in charge of every redirect.
+    It must subclass urllib.request.HTTPRedirectHandler, so defining it at
+    module top would import urllib.request (ssl/http, ~7 MB) on every
+    startup -- and this module loads at launch for SubscriptionStore.
     """
+    import urllib.request
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        scheme = urllib.parse.urlsplit(newurl).scheme.lower()
-        if scheme and scheme not in _HTTP_SCHEMES:
-            raise ValueError(
-                f"refusing to follow a redirect to a non-http(s) URL: {scheme}://…")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+    class _HttpOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+        """Refuse redirects that hop to another scheme (https -> file://).
+
+        A panel that answers a subscription fetch with "Location: file://…"
+        must not make this root process read local files, so the hop is
+        refused before anything is read from the new URL. build_opener()
+        drops its default HTTPRedirectHandler when given one of its
+        subclasses, so an opener built with this class has exactly this
+        handler in charge of every redirect.
+        """
+
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            scheme = urllib.parse.urlsplit(newurl).scheme.lower()
+            if scheme and scheme not in _HTTP_SCHEMES:
+                raise ValueError(
+                    f"refusing to follow a redirect to a non-http(s) URL: {scheme}://…")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    return _HttpOnlyRedirectHandler
 
 
-# Installed once, at import: urlopen() below (and routing_io's, which
-# imports this module) then follows only http(s) redirects. This only
-# narrows redirects to what this app ever fetches, and installing it here
-# keeps the urlopen call sites -- and their tests -- unchanged.
-urllib.request.install_opener(
-    urllib.request.build_opener(_HttpOnlyRedirectHandler))
+def __getattr__(name: str):
+    # Lazily re-exported (see above): the hardening tests instantiate
+    # subscription._HttpOnlyRedirectHandler directly.
+    if name == "_HttpOnlyRedirectHandler":
+        return _redirect_handler_class()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+@functools.cache
+def _opener():
+    """The process-wide urlopen opener, installed on the first network use.
+
+    Same protection main installed at import (only http(s) redirects are
+    followed), but building it here -- instead of at module top -- keeps
+    urllib.request/ssl out of every startup that never fetches. Cached, so
+    the opener is built and installed exactly once.
+    """
+    import urllib.request
+
+    opener = urllib.request.build_opener(_redirect_handler_class())
+    urllib.request.install_opener(opener)
+    return opener
 
 
 @dataclass
@@ -193,7 +220,13 @@ def subscription_url(text: str) -> str:
 
 
 def fetch(url: str, timeout: float = 20.0, user_agent: str = ""):
+    # Local import: urllib.request drags in ssl/http/email (~7 MB), and this
+    # module is imported at startup for SubscriptionStore, long before any
+    # fetch ever runs.
+    import urllib.request
+
     _require_http_url(url)  # a file:// URL must fail here, never in urlopen
+    _opener()  # install the http-only redirect guard before the first fetch
     req = urllib.request.Request(url, headers={"User-Agent": user_agent or DEFAULT_USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (user-provided sub URL)
         info = resp.headers.get("Subscription-Userinfo", "")

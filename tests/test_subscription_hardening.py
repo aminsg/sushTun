@@ -40,7 +40,7 @@ def _fail_if_network(req, timeout=None):
     "https://",
 ])
 def test_fetch_rejects_non_http_urls_before_any_network(monkeypatch, url):
-    monkeypatch.setattr(subscription.urllib.request, "urlopen", _fail_if_network)
+    monkeypatch.setattr("urllib.request.urlopen", _fail_if_network)
     with pytest.raises(ValueError, match="http"):
         subscription.fetch(url)
 
@@ -55,7 +55,7 @@ def test_refresh_rejects_non_http_url_without_fetching(monkeypatch, tmp_path):
 
 
 def test_default_fetch_rejects_non_http_urls(monkeypatch):
-    monkeypatch.setattr(routing_io.urllib.request, "urlopen", _fail_if_network)
+    monkeypatch.setattr("urllib.request.urlopen", _fail_if_network)
     with pytest.raises(ValueError, match="http"):
         routing_io._default_fetch("file:///etc/hostname")
 
@@ -133,7 +133,7 @@ def test_subscription_body_over_the_cap_is_refused(monkeypatch):
         def __exit__(self, *a):
             return False
 
-    monkeypatch.setattr(subscription.urllib.request, "urlopen",
+    monkeypatch.setattr("urllib.request.urlopen",
                         lambda req, timeout=20.0: FakeResp())
     with pytest.raises(ValueError, match="too large"):
         subscription.fetch("https://sub.example/x")
@@ -152,7 +152,7 @@ def test_default_fetch_caps_the_body(monkeypatch):
         def __exit__(self, *a):
             return False
 
-    monkeypatch.setattr(routing_io.urllib.request, "urlopen",
+    monkeypatch.setattr("urllib.request.urlopen",
                         lambda req, timeout=20.0: FakeResp())
     with pytest.raises(ValueError, match="too large"):
         routing_io._default_fetch("https://example.invalid/rules.json")

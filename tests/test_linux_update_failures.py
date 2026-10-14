@@ -28,7 +28,7 @@ def release(monkeypatch, tmp_path):
     monkeypatch.setattr(updates.paths, "base_dir", lambda: tmp_path)
     monkeypatch.setattr(updates, "_expected_digest", lambda *a: hashlib.sha256(b"payload").hexdigest())
     monkeypatch.setattr(updates, "_MIN_SIZE", 1)
-    monkeypatch.setattr(updates.urllib.request, "urlopen",
+    monkeypatch.setattr("urllib.request.urlopen",
                         lambda *a, **k: pytest.fail("unmocked network"))
     return updates.Release("v1.0.0", "https://example.org", assets={
         "sushTun-linux": "https://example.org/binary"})
@@ -56,7 +56,7 @@ def test_disk_full_during_download_cleans_partial_file(monkeypatch, release, tmp
 def test_short_http_body_is_rejected(monkeypatch, release, tmp_path):
     class Response(io.BytesIO):
         headers = {"Content-Length": "100"}
-    monkeypatch.setattr(updates.urllib.request, "urlopen", lambda *a, **k: Response(b"part"))
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: Response(b"part"))
     with pytest.raises(updates.UpdateError, match="incomplete"):
         updates.download(release)
     assert not (tmp_path / "update.tmp").exists()

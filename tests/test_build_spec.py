@@ -23,3 +23,21 @@ def test_build_spec_bundles_the_country_flags():
     assert '"*.json"' in spec
     assert '"assets/flags"' in spec
     assert (ROOT / "assets" / "flags" / "names.json").is_file()
+
+
+def test_build_spec_drops_unused_qt_but_keeps_what_the_app_loads():
+    spec = (ROOT / "tools" / "build.spec").read_text(encoding="utf-8")
+    for framework in ("QtQml", "QtQuick", "QtPdf", "QtVirtualKeyboard", "QtOpenGL"):
+        assert f'"{framework}"' in spec, f"{framework} is no longer excluded from the build"
+    start = spec.index("_UNUSED_QT_FRAMEWORKS")
+    unused = spec[start:spec.index(")", start)]
+    for framework in ("QtSvg", "QtDBus", "QtCore", "QtGui", "QtWidgets", "QtNetwork"):
+        # QtSvg renders the flags and the checkbox glyph, QtDBus is linked by
+        # QtGui: excluding either would break the packaged app at runtime.
+        assert framework not in unused, f"{framework} must stay in the build"
+    assert '"PySide6.QtSvg"' not in spec
+    assert '"PySide6.QtDBus"' not in spec
+    # Qt's own .qm translations (nothing installs a QTranslator) and the
+    # QtPdf-bound image plugin go through the same collected-files filter.
+    assert "Qt/translations" in spec
+    assert "libqpdf" in spec

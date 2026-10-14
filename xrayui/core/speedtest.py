@@ -7,21 +7,17 @@ tunnel is up. Never touches the live connection's process, config or log.
 from __future__ import annotations
 
 import functools
-import http.client
 import json
 import os
 import socket
 import subprocess
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .. import paths
-from . import coreopts, geo_exit, metrics, outbounds, proc
+from . import coreopts, metrics, outbounds, proc
 from .profiles import Profile
 
 OnResult = Callable[[str, "float | None", "str | None"], None]
@@ -173,10 +169,15 @@ def _status_error(status: int) -> str | None:
 
 
 def _measure_cold(port: int, url: str, timeout: float) -> Measured:
+    # Local imports: urllib.request drags in ssl/http/email (~7 MB), and this
+    # module is imported at startup for ResultStore, long before any test runs.
+    import urllib.error
+    import urllib.request
+
+    from . import geo_exit
+
     proxy_url = f"http://127.0.0.1:{port}"
-    opener = urllib.request.build_opener(
-        geo_exit.ExplicitProxyHandler({"http": proxy_url, "https": proxy_url})
-    )
+    opener = geo_exit.build_opener(proxy_url)
     start = time.perf_counter()
     try:
         with opener.open(url, timeout=timeout) as resp:
@@ -201,6 +202,9 @@ def _measure_warm(port: int, url: str, timeout: float) -> Measured:
     the target; the second only for the round trip, which is what other
     clients (v2rayN) report.
     """
+    import http.client
+    import urllib.parse
+
     parts = urllib.parse.urlsplit(url)
     https = parts.scheme == "https"
     if https:
@@ -257,6 +261,8 @@ def _measure_group(
         on_result(p.uid, delay, error)
         if delay is None or on_detail is None:
             return
+        from . import geo_exit
+
         fields = {"cold_ms": m.cold}
         info = geo_exit.detect(f"http://127.0.0.1:{port}", timeout)
         if info:
