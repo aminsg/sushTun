@@ -1874,3 +1874,50 @@ def test_a_connection_with_no_recorded_profile_falls_back_to_the_active_one(wind
     a, _b = _two_servers(window)
     monkeypatch.setattr(window.conn, "is_connected", lambda: True)
     assert window._connected_profile().uid == a.uid
+
+
+def test_paste_import_skips_exact_duplicates_and_reports(window):
+    link = ("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+            "?encryption=none&type=tcp&security=none#Dup")
+    QApplication.clipboard().setText(link)
+    window._paste_import()
+    assert len(window.store.list()) == 1
+    QApplication.clipboard().setText(link + "\n" + link)
+    window._paste_import()
+    assert len(window.store.list()) == 1
+    assert "uplicate" in window.step_label.text()
+
+
+def test_paste_import_never_raises_on_hostile_vmess_line(window):
+    import base64 as _b64
+    import json as _json
+    good = ("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+            "?encryption=none&type=tcp&security=none#Good")
+    bad = "vmess://" + _b64.b64encode(_json.dumps(
+        {"ps": "evil", "add": "2.2.2.2", "port": [80], "id": "u"}).encode()).decode()
+    QApplication.clipboard().setText(good + "\n" + bad)
+    window._paste_import()  # must not raise inside the Qt slot
+    assert [p.name for p in window.store.list()] == ["Good"]
+
+
+def test_import_dialog_path_skips_duplicates_and_reports(window, monkeypatch):
+    from xrayui.core import importer as importer_mod
+    from xrayui.ui import main_window as main_window_mod
+
+    dup_link = ("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+                "?encryption=none&type=tcp&security=none#Dup")
+    new_link = ("vless://22222222-2222-2222-2222-222222222222@5.6.7.8:443"
+                "?encryption=none&type=tcp&security=none#New")
+    window.store.save(importer_mod.parse_share_text(dup_link)[0])
+
+    class _Dlg:
+        subscription_url = ""
+        profiles = importer_mod.parse_share_text(dup_link + "\n" + new_link)
+
+        def exec(self):
+            return True
+
+    monkeypatch.setattr(main_window_mod, "ImportDialog", lambda _parent: _Dlg())
+    window._import()
+    assert sorted(p.name for p in window.store.list()) == ["Dup", "New"]
+    assert "skipped 1 duplicate" in window.step_label.text()

@@ -28,6 +28,27 @@ def _maybe_b64(text: str) -> str:
     return text
 
 
+def _parse_port(raw) -> int:
+    """A port from parsed JSON: an int (never a bool) or a digit string, 1-65535.
+
+    Plain int() both crashes (a list/dict port raises TypeError, which the
+    per-line import loop never caught, so one hostile line killed the whole
+    import) and silently mangles (80.5 -> 80, True -> 1). Anything else is a
+    ValueError, so the bad line/config is skipped or reported as invalid.
+    """
+    if isinstance(raw, bool):
+        raise ValueError(f"invalid port: {raw!r}")
+    if isinstance(raw, int):
+        port = raw
+    elif isinstance(raw, str) and raw.strip().isdigit():
+        port = int(raw.strip())  # may still raise ValueError for exotic digits
+    else:
+        raise ValueError(f"invalid port: {raw!r}")
+    if not 1 <= port <= 65535:
+        raise ValueError(f"port out of range: {raw!r}")
+    return port
+
+
 def _parse_http_socks_userinfo(userinfo: str) -> tuple[str, str]:
     if not userinfo:
         return "", ""
@@ -125,10 +146,10 @@ def _std_query_fields(query: str) -> dict:
     extra = q.get("extra", "")
     try:
         json.loads(extra)
-    except ValueError:
+    except (ValueError, RecursionError):
         try:
             json.loads(unquote(extra))
-        except ValueError:
+        except (ValueError, RecursionError):
             pass
         else:
             extra = unquote(extra)
@@ -227,7 +248,7 @@ def _vmess_json_profile(data: dict) -> Profile:
         name=str(data.get("ps") or data.get("add") or "imported"),
         protocol="vmess",
         address=str(data.get("add") or ""),
-        port=int(data["port"]) if data.get("port") not in (None, "") else 443,
+        port=_parse_port(data["port"]) if data.get("port") not in (None, "") else 443,
         id=str(data.get("id") or ""),
         vmess_security=str(data.get("scy") or "auto") or "auto",
         network=net,
@@ -259,7 +280,7 @@ def parse_vmess(url: str) -> Profile:
             pass  # fall through to the base64 JSON form below
     try:
         data = json.loads(_b64decode(body))
-    except (ValueError, binascii.Error) as e:
+    except (ValueError, binascii.Error, RecursionError) as e:
         raise ValueError("not a valid vmess:// link") from e
     if not isinstance(data, dict):
         raise ValueError("not a valid vmess:// link")
@@ -549,7 +570,7 @@ def parse_share_text(text: str) -> list[Profile]:
                 p = parse_http(line)
             else:
                 continue
-        except ValueError:
+        except (ValueError, TypeError):
             continue
         # A malformed link a scheme-specific parser didn't reject outright
         # (a vmess link with no "add", a trojan link with no password) must
@@ -573,7 +594,7 @@ def parse_subscription(text: str) -> list[Profile]:
         return parse_share_text(body)
     try:
         data = json.loads(body)
-    except ValueError:
+    except (ValueError, RecursionError):
         return []
     profiles = []
     for item in data if isinstance(data, list) else [data]:
@@ -686,7 +707,7 @@ def _profile_from_vless_outbound(proxy: dict) -> Profile:
         name=vnext.get("address", "imported"),
         protocol=proxy.get("protocol", "vless"),
         address=vnext.get("address", ""),
-        port=int(vnext.get("port", 443)),
+        port=_parse_port(vnext.get("port", 443)),
         id=user.get("id", ""),
         encryption=user.get("encryption", "none") or "none",
         flow=user.get("flow", ""),
@@ -701,7 +722,7 @@ def _profile_from_vmess_outbound(proxy: dict) -> Profile:
         name=vnext.get("address", "imported"),
         protocol="vmess",
         address=vnext.get("address", ""),
-        port=int(vnext.get("port", 443)),
+        port=_parse_port(vnext.get("port", 443)),
         id=user.get("id", ""),
         vmess_security=user.get("security", "auto") or "auto",
         **_stream_fields(proxy.get("streamSettings", {})),
@@ -714,7 +735,7 @@ def _profile_from_trojan_outbound(proxy: dict) -> Profile:
         name=server.get("address", "imported"),
         protocol="trojan",
         address=server.get("address", ""),
-        port=int(server.get("port", 443)),
+        port=_parse_port(server.get("port", 443)),
         id=server.get("password", ""),
         **_stream_fields(proxy.get("streamSettings", {})),
     )
@@ -726,7 +747,7 @@ def _profile_from_ss_outbound(proxy: dict) -> Profile:
         name=server.get("address", "imported"),
         protocol="shadowsocks",
         address=server.get("address", ""),
-        port=int(server.get("port", 443)),
+        port=_parse_port(server.get("port", 443)),
         id=server.get("password", ""),
         ss_method=server.get("method", ""),
         **_stream_fields(proxy.get("streamSettings", {})),
@@ -753,7 +774,7 @@ def _profile_from_hysteria2_outbound(proxy: dict) -> Profile:
         name=settings.get("address", "imported"),
         protocol="hysteria2",
         address=settings.get("address", ""),
-        port=int(settings.get("port", 443)),
+        port=_parse_port(settings.get("port", 443)),
         id=hy.get("auth", ""),
         sni=tls.get("serverName", ""),
         alpn=",".join(alpn) if isinstance(alpn, list) else str(alpn),
@@ -797,7 +818,10 @@ def parse_json(text: str) -> Profile:
     stripped = text.strip()
     if _looks_like_wg_conf(stripped):
         return parse_wg_conf(stripped)
-    data = json.loads(text)
+    try:
+        data = json.loads(text)
+    except RecursionError as e:
+        raise ValueError("invalid JSON: too deeply nested") from e
     if isinstance(data, dict) and "outbounds" in data:
         p = _profile_from_config(data)
     elif isinstance(data, dict):
