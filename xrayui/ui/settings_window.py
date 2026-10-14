@@ -96,6 +96,9 @@ def _topic_help(key: str) -> tuple[str, str]:
         return (tr("The name and password of the Wi-Fi hotspot that shares the tunnel."),
                 tr("Pick a name your guests will recognise."))
     if key == "startup":
+        if sys.platform == "darwin":
+            return (tr("What happens when you turn on your computer."),
+                    tr("Have sushTun waiting in the menu bar before you open a browser."))
         return (tr("What happens when you turn on your computer."),
                 tr("Have sushTun waiting in the tray before you open a browser."))
     if key == "exits":
@@ -1392,12 +1395,18 @@ class _StartupPage(QWidget):
         if self._autostart_ok:
             set_help(self.start_on_login,
                      tr("Opens sushTun by itself whenever you sign in to your computer."),
+                     tr("Boot up and it is already waiting in the menu bar.")
+                     if sys.platform == "darwin" else
                      tr("Boot up and it is already waiting in the tray."))
 
         self.start_minimized = Switch()
         self.start_minimized.setChecked(bool(self._startup_cfg.get("start_minimized")))
-        group.add_row(tr("Start minimized to the tray"), self.start_minimized)
+        group.add_row(tr("Start hidden in the menu bar")
+                      if sys.platform == "darwin" else
+                      tr("Start minimized to the tray"), self.start_minimized)
         set_help(self.start_minimized,
+                 tr("Starts hidden in the menu bar instead of opening its window.")
+                 if sys.platform == "darwin" else
                  tr("Starts hidden in the tray instead of opening its window."),
                  tr("It runs quietly until you need it."))
 

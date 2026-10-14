@@ -1335,7 +1335,10 @@ def test_auto_refresh_subs_isolates_a_failing_entry(window, monkeypatch):
 
 
 # -- --autostart launch behavior (Phase 7a) ----------------------------------
-def test_starts_hidden_only_for_a_login_launch_with_start_minimized(defaults):
+def test_starts_hidden_only_for_a_login_launch_with_start_minimized(defaults, monkeypatch):
+    # Pinned to non-macOS: on macOS every login launch starts hidden in the
+    # menu bar (see test_macos_native.py), start_minimized or not.
+    monkeypatch.setattr(sys, "platform", "linux")
     from xrayui.ui.app import starts_hidden
     settings = copy.deepcopy(defaults)
     settings["startup"]["start_minimized"] = True

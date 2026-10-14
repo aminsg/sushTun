@@ -689,7 +689,10 @@ class MainWindow(QMainWindow):
         self.servers_menu = menu.addMenu(tr("Servers"))
         self.routing_menu = menu.addMenu(tr("Routing"))
         menu.addSeparator()
-        menu.addAction(tr("Quit"), self._quit)
+        # macOS names the quit item after the app ("Quit sushTun"); the
+        # elsewhere-shared "Quit" stays for Windows/Linux.
+        menu.addAction(tr("Quit sushTun") if sys.platform == "darwin"
+                       else tr("Quit"), self._quit)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
             lambda reason: self._show_window()
@@ -761,27 +764,133 @@ class MainWindow(QMainWindow):
             pass
 
     def _build_mac_menu(self) -> None:
-        """The macOS menu bar, with Quit and Settings in the app menu.
+        """The macOS menu bar, in the order Apple's HIG prescribes.
 
-        The app menu owns Cmd+Q there: its default Quit item took the key
-        before any shortcut, and its quit was cancelled by closeEvent's hide
-        to the tray, so Cmd+Q only ever hid the window and the root process
-        stayed behind. These role actions replace the default items and run
-        this window's own quit and settings.
+        Role actions (About/Preferences/Quit) relocate into the native app
+        menu on a real Mac by themselves; offscreen they stay where they
+        were added, which is what the tests assert on. Explicit "Ctrl+,"
+        spells Cmd+, there (Qt maps Ctrl to Command on macOS), while
+        QKeySequence.Preferences would give Cmd+Shift+, on Apple platforms.
         """
-        menu = self.menuBar().addMenu(tr("Connection"))
-        menu.addAction(tr("Connect"), self._connect)
-        menu.addAction(tr("Disconnect"), self._disconnect)
-        self.act_settings = QAction(tr("Settings"), self)
+        # --- app-menu items (About / Settings… / Hide / Quit) --------------
+        self.act_about = QAction(tr("About sushTun"), self)
+        self.act_about.setMenuRole(QAction.AboutRole)
+        self.act_about.triggered.connect(self._show_about)
+        self.act_settings = QAction(tr("Settings…"), self)
         self.act_settings.setMenuRole(QAction.PreferencesRole)
-        self.act_settings.setShortcut(QKeySequence("Ctrl+,"))  # Cmd+, on macOS
+        self.act_settings.setShortcut(QKeySequence("Ctrl+,"))
         self.act_settings.triggered.connect(self._open_settings)
-        menu.addAction(self.act_settings)
-        self.act_quit = QAction(tr("Quit"), self)
+        self.act_hide = QAction(tr("Hide sushTun"), self)
+        self.act_hide.setMenuRole(QAction.ApplicationSpecificRole)
+        self.act_hide.setShortcut(QKeySequence("Ctrl+H"))  # Cmd+H on macOS
+        self.act_hide.triggered.connect(self.hide)
+        self.act_quit = QAction(tr("Quit sushTun"), self)
         self.act_quit.setMenuRole(QAction.QuitRole)
         self.act_quit.setShortcut(QKeySequence.Quit)
         self.act_quit.triggered.connect(self._quit)
-        menu.addAction(self.act_quit)
+        # --- Connection keeps the tunnel actions only ----------------------
+        conn = self.menuBar().addMenu(tr("Connection"))
+        conn.addAction(tr("Connect"), self._connect)
+        conn.addAction(tr("Disconnect"), self._disconnect)
+        conn.addSeparator()
+        conn.addAction(self.act_about)
+        conn.addAction(self.act_settings)
+        conn.addAction(self.act_hide)
+        conn.addAction(self.act_quit)
+        # --- Edit: the focused field's own clipboard -----------------------
+        edit = self.menuBar().addMenu(tr("Edit"))
+        for label, key, standard in (
+            (tr("Cut"), "cut", QKeySequence.Cut),
+            (tr("Copy"), "copy", QKeySequence.Copy),
+            (tr("Paste"), "paste", QKeySequence.Paste),
+            (tr("Select All"), "select", QKeySequence.SelectAll),
+        ):
+            action = QAction(label, self)
+            action.setShortcut(standard)
+            action.triggered.connect(
+                lambda _c=False, k=key: self._edit_focused(k))
+            edit.addAction(action)
+        # --- Window: minimize / zoom / close -------------------------------
+        win = self.menuBar().addMenu(tr("Window"))
+        self.act_minimize = QAction(tr("Minimize"), self)
+        self.act_minimize.setShortcut(QKeySequence("Ctrl+M"))  # Cmd+M on macOS
+        self.act_minimize.triggered.connect(self.showMinimized)
+        self.act_zoom = QAction(tr("Zoom"), self)
+        self.act_zoom.triggered.connect(self._toggle_zoom)
+        self.act_close_window = QAction(tr("Close Window"), self)
+        self.act_close_window.setShortcut(QKeySequence.Close)  # Cmd+W on macOS
+        self.act_close_window.triggered.connect(self.close)
+        win.addAction(self.act_minimize)
+        win.addAction(self.act_zoom)
+        win.addAction(self.act_close_window)
+        # --- Help: replays the first-run tour ------------------------------
+        help_menu = self.menuBar().addMenu(tr("Help"))
+        self.act_help = QAction(tr("sushTun Help"), self)
+        self.act_help.setShortcut(QKeySequence.HelpContents)
+        self.act_help.triggered.connect(self.start_tour)
+        help_menu.addAction(self.act_help)
+
+    def _toggle_zoom(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def _show_about(self) -> None:
+        from .. import __version__
+        QMessageBox.about(
+            self, tr("About sushTun"),
+            tr("Version {version}", version=__version__))
+
+    def _edit_focused(self, kind: str) -> None:
+        """Cut/Copy/Paste/Select All for the focused text field.
+
+        Widget methods talk to Qt's own clipboard, which the elevated copy
+        cannot reach on macOS, so there the session clipboard is used
+        directly instead (see ui/clipboard_bridge.py).
+        """
+        from PySide6.QtWidgets import QLineEdit, QPlainTextEdit, QTextEdit
+        widget = QApplication.focusWidget()
+        if not isinstance(widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            return
+        if kind == "select":
+            widget.selectAll()
+            return
+        if sys.platform == "darwin" and clipboard_bridge.elevated_on_mac():
+            self._edit_focused_as_user(widget, kind)
+            return
+        {"cut": widget.cut, "copy": widget.copy,
+         "paste": widget.paste}[kind]()
+
+    @staticmethod
+    def _edit_focused_as_user(widget, kind: str) -> None:
+        """The same edit through the user's own pasteboard (elevated macOS)."""
+        from PySide6.QtWidgets import QLineEdit
+        if kind == "paste":
+            if getattr(widget, "isReadOnly", lambda: False)():
+                return
+            value = clipboard_bridge.text()
+            if not value:
+                return
+            if isinstance(widget, QLineEdit):
+                widget.insert(value)
+            else:
+                widget.insertPlainText(value)
+            return
+        selected = (widget.selectedText()
+                    if isinstance(widget, QLineEdit)
+                    else widget.textCursor().selectedText().replace(" ", "\n"))
+        if kind == "copy":
+            if selected:
+                clipboard_bridge.set_text(selected)
+        elif kind == "cut" and selected:
+            if getattr(widget, "isReadOnly", lambda: False)():
+                return
+            clipboard_bridge.set_text(selected)
+            if isinstance(widget, QLineEdit):
+                widget.del_()
+            else:
+                widget.textCursor().removeSelectedText()
 
     def _show_window(self) -> None:
         self._hidden_to_tray = False
@@ -1323,11 +1432,10 @@ class MainWindow(QMainWindow):
             if a.template else a.message
             for a in triggered)
         self.alert_banner.show_alert(level, message)
-        if self.tray:
-            icon = (QSystemTrayIcon.Critical
-                    if level == "critical"
-                    else QSystemTrayIcon.Warning)
-            self.tray.showMessage("sushTun", message, icon, 8000)
+        self._notify("sushTun", message,
+                     QSystemTrayIcon.Critical
+                     if level == "critical"
+                     else QSystemTrayIcon.Warning)
 
     def _maybe_check_updates(self) -> None:
         cfg = self.settings.get("updates", {})
@@ -1370,14 +1478,26 @@ class MainWindow(QMainWindow):
         self.alert_banner.show_alert(
             "warning", tr("sushTun {tag} is available", tag=ltr(result.tag)),
             action_label=tr("Update now"), action=self.open_update_dialog)
-        if (self.tray
-                and self.settings["updates"].get("notified_version") != result.tag):
-            self.tray.showMessage(
+        if self.settings["updates"].get("notified_version") != result.tag:
+            self._notify(
                 "sushTun",
                 tr("sushTun {tag} is available", tag=ltr(result.tag)),
-                QSystemTrayIcon.Information, 8000)
+                QSystemTrayIcon.Information)
             self.settings["updates"]["notified_version"] = result.tag
             app_settings.save(self.settings)
+
+    def _notify(self, title: str, message: str, icon) -> None:
+        """A menu-bar/tray notification, kept quiet on macOS conventions.
+
+        No banner while the window is focused there: the alert banner
+        already says it, and macOS apps do not notify about what is on
+        screen. Nothing happens without a tray icon to show it on.
+        """
+        if self.tray is None:
+            return
+        if sys.platform == "darwin" and self.isActiveWindow():
+            return
+        self.tray.showMessage(title, message, icon, 8000)
 
     def open_update_dialog(self, release=None, parent=None) -> None:
         """Show what's new and, where the build allows it, install it."""
@@ -1923,6 +2043,9 @@ class MainWindow(QMainWindow):
                  page=PAGE_SERVERS),
             Step(tr("Add your servers"),
                  tr("Copy a server link or your provider's subscription URL, then "
+                    "press Import. Cmd+V works too. A link looks like vless://…")
+                 if sys.platform == "darwin" else
+                 tr("Copy a server link or your provider's subscription URL, then "
                     "press Import. Ctrl+V works too. A link looks like vless://…"),
                  lambda: self.servers_page.core.btn_import, PAGE_SERVERS),
             Step(tr("Your server list"),
@@ -2298,11 +2421,15 @@ class MainWindow(QMainWindow):
             if not self._told_about_tray:
                 self._told_about_tray = True
                 if self.tray is not None:
+                    # The icon lives in the menu bar on macOS, and Quit is
+                    # Cmd+Q there (Qt shows "Ctrl+Q" on other platforms).
+                    hint = (tr("Still running in the menu bar. Quit from this icon's "
+                               "menu, or press Cmd+Q.")
+                            if sys.platform == "darwin" else
+                            tr("Still running here. Quit from this icon's menu, "
+                               "or press Ctrl+Q."))
                     self.tray.showMessage(
-                        "sushTun",
-                        tr("Still running here. Quit from this icon's menu, "
-                           "or press Ctrl+Q."),
-                        QSystemTrayIcon.Information, 5000)
+                        "sushTun", hint, QSystemTrayIcon.Information, 5000)
             return
         for t in (self.timer, self.alert_timer, self.autorefresh_timer,
                   self.route_timer, self.geo_timer, self.update_check_timer):

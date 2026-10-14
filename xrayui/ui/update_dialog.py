@@ -13,6 +13,7 @@ answer to "there is an update" is never just a version number.
 from __future__ import annotations
 
 import re
+import sys
 import threading
 
 from PySide6.QtCore import Qt, QThreadPool, QUrl, Signal
@@ -170,6 +171,13 @@ class UpdateDialog(QDialog):
         cursor.endEditBlock()
 
     def _why_not_automatic(self) -> str:
+        if sys.platform == "darwin":
+            # Name the disk image: the release page lists several files and
+            # the installed .app updates from the .dmg, not the raw binary.
+            name = updates_mod.mac_download_name(self._release)
+            if name:
+                return tr("This copy can't update itself. Download {version} and replace "
+                          "it by hand.", version=ltr(name))
         return tr("This copy can't update itself. Download {version} and replace "
                   "it by hand.", version=ltr(self._release.version))
 

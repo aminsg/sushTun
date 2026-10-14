@@ -58,8 +58,13 @@ def starts_hidden(autostart: bool, settings: dict, tray: bool = True) -> bool:
 
     Only a login launch hides, and only when asked to: opening the app from
     the menu must always show a window, and without a tray icon a hidden
-    window could never be reached at all.
+    window could never be reached at all. On macOS every login launch
+    starts in the menu bar even without "start minimized": a password
+    prompt and a window seconds after login is the bad time the autostart
+    design avoids, and the Dock click brings the window back.
     """
+    if sys.platform == "darwin" and autostart and tray:
+        return True
     return autostart and tray and bool(settings.get("startup", {}).get("start_minimized"))
 
 

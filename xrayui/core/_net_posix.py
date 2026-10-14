@@ -1,9 +1,9 @@
-"""EXPERIMENTAL Linux/macOS network backend (unverified on this build).
+"""Linux/macOS network backend.
 
 Linux mirrors the Windows network interface using ip/route (Xray's native TUN
-inbound works there). macOS has no native Xray TUN inbound at all, so the
-connect path there instead bridges Xray's SOCKS inbound through tun2socks
-(see tun2socks.py) — routes and DNS below target that bridge device.
+inbound works there). macOS uses Xray's own TUN inbound (a utun device) with
+the tun2socks bridge kept as an automatic fallback (see tun2socks.py) --
+routes and DNS below target whichever device the connect path brought up.
 """
 from __future__ import annotations
 

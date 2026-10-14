@@ -52,6 +52,11 @@ PORTABLE_ASSETS = {"win32": "sushTun-windows.exe", "darwin": "sushTun-macos"}
 PORTABLE_LINUX = "sushTun-linux"
 SETUP_ASSET = "sushTun-Setup-{version}.exe"
 DEB_ASSET = "sushtun_{version}_amd64.deb"
+# The installable macOS package (see .github/workflows/release.yml's
+# macos-app job): the .app inside a drag-to-Applications disk image. An
+# installed .app cannot replace itself (it would break its own signature),
+# so the update dialog points those copies at this file by name.
+DMG_ASSET = "sushTun-macos.dmg"
 
 # A download that came up this short is an error page, not a build.
 _MIN_SIZE = 2 * 1024 * 1024
@@ -170,6 +175,12 @@ def asset_for_this_build(release: Release) -> str | None:
     else:
         name = PORTABLE_ASSETS.get(sys.platform, PORTABLE_LINUX)
     return name if name in release.assets else None
+
+
+def mac_download_name(release: Release) -> str | None:
+    """The .dmg an installed macOS copy should download, or None when the
+    release does not publish one."""
+    return DMG_ASSET if DMG_ASSET in release.assets else None
 
 
 # -- downloading -----------------------------------------------------------
