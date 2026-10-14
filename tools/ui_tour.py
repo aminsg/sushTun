@@ -153,6 +153,11 @@ def install_stubs() -> None:
         ipv4 = "10.10.0.2"
         gateway = "10.10.0.1"
         tun_index = None  # keeps _sample_live() from firing
+        # Read by MainWindow._connected_profile/_refresh_status when the tour
+        # fake-connects; without them the connected states abort the tour.
+        profile_uid = None
+        chain_uid = ""
+        server_ip = None
 
         def is_connected(self) -> bool:
             return False
