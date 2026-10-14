@@ -361,6 +361,9 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Name filter": "فیلتر نام",
     "Missing URL": "URL موجود نیست",
     "Subscription URL is required.": "URL اشتراک الزامی است.",
+    "Invalid subscription URL": "URL اشتراک نامعتبر است",
+    "Subscription URL must start with http:// or https://.":
+        "URL اشتراک باید با http:// یا https:// شروع شود.",
     "Invalid name filter": "فیلتر نام نامعتبر است",
 
     # -- core/alerts.py (value+template, see ui/main_window.py._check_alerts) -

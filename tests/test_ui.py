@@ -1268,6 +1268,31 @@ def test_auto_refresh_subs_uses_is_due_and_skips_disabled(window, monkeypatch):
     assert refreshed == [due.uid]
 
 
+def test_auto_refresh_subs_isolates_a_failing_entry(window, monkeypatch):
+    from xrayui.ui import main_window as main_window_mod
+    refreshed = []
+    monkeypatch.setattr(window, "_refresh_sub", lambda uid: refreshed.append(uid))
+    window.settings["alerts"]["auto_refresh_hours"] = 6
+
+    bad = Subscription(name="Bad", url="https://sub.example/bad", enabled=True, updated=0)
+    good = Subscription(name="Good", url="https://sub.example/good", enabled=True, updated=0)
+    window.subs.save(bad)
+    window.subs.save(good)
+
+    real_is_due = main_window_mod.sub_mod.is_due
+
+    def flaky(sub, global_hours, now):
+        if sub.uid == bad.uid:
+            raise TypeError("boom")
+        return real_is_due(sub, global_hours, now)
+
+    monkeypatch.setattr(main_window_mod.sub_mod, "is_due", flaky)
+
+    window._auto_refresh_subs()  # must not raise, and Good still refreshes
+
+    assert refreshed == [good.uid]
+
+
 # -- --autostart launch behavior (Phase 7a) ----------------------------------
 def test_starts_hidden_only_for_a_login_launch_with_start_minimized(defaults):
     from xrayui.ui.app import starts_hidden

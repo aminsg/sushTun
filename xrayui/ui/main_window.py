@@ -1103,8 +1103,13 @@ class MainWindow(QMainWindow):
             .get("auto_refresh_hours", 6)
         now = time.time()
         for sub in self.subs.list():
-            if sub_mod.is_due(sub, global_hours, now):
-                self._refresh_sub(sub.uid)
+            try:
+                if sub_mod.is_due(sub, global_hours, now):
+                    self._refresh_sub(sub.uid)
+            except Exception:
+                # One hostile stored entry (e.g. restored from a backup)
+                # must never stop the others from refreshing on this tick.
+                continue
 
     # ── alerts / updates --------------------------------------------------
 
