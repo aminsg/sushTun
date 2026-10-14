@@ -1,18 +1,16 @@
 """Isolated prefix probes and exit verification for ordered proxy chains."""
 from __future__ import annotations
 
-import http.client
 import json
 import subprocess
 import tempfile
 import threading
 import time
-import urllib.parse
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 
 from .. import paths
-from . import chains, geo_exit, network, outbounds, proc, settings, speedtest
+from . import chains, network, outbounds, proc, settings, speedtest
 
 DEFAULT_DOWNLOAD_URL = 'https://speed.cloudflare.com/__down?bytes=25000000'
 __test__ = False
@@ -110,6 +108,9 @@ def _temporary(profiles, *, timeout, cancel, iface_alias, core_cfg):
 
 
 def _download(port, url, timeout, cancel):
+    import http.client
+    import urllib.parse
+
     parts = urllib.parse.urlsplit(url)
     secure = parts.scheme == 'https'
     cls = http.client.HTTPSConnection if secure else http.client.HTTPConnection
@@ -170,6 +171,8 @@ def test_chain(plan, *, mode, url, download_url=DEFAULT_DOWNLOAD_URL, timeout=10
                 result.warm_ms = warm[0]
                 if cancel.is_set():
                     return result
+                from . import geo_exit
+
                 info = geo_exit.detect(f'http://127.0.0.1:{port}', timeout)
                 if info:
                     result.country, result.exit_ip = info.country, info.ip

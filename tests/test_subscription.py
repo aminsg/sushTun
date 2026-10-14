@@ -162,7 +162,7 @@ def test_fetch_sends_the_subscriptions_own_user_agent(monkeypatch):
         captured["header"] = req.get_header("User-agent")
         return FakeResp()
 
-    monkeypatch.setattr(subscription.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     subscription.fetch("https://sub.example/x", user_agent="MyClient/1.0")
     assert captured["header"] == "MyClient/1.0"
 
@@ -186,7 +186,7 @@ def test_fetch_falls_back_to_the_default_user_agent(monkeypatch):
         captured["header"] = req.get_header("User-agent")
         return FakeResp()
 
-    monkeypatch.setattr(subscription.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     subscription.fetch("https://sub.example/x")
     assert captured["header"] == subscription.DEFAULT_USER_AGENT
 

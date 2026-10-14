@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import re
 import time
-import urllib.request
 import uuid
 from dataclasses import asdict, dataclass, field
 
@@ -111,6 +110,11 @@ def subscription_url(text: str) -> str:
 
 
 def fetch(url: str, timeout: float = 20.0, user_agent: str = ""):
+    # Local import: urllib.request drags in ssl/http/email (~7 MB), and this
+    # module is imported at startup for SubscriptionStore, long before any
+    # fetch ever runs.
+    import urllib.request
+
     req = urllib.request.Request(url, headers={"User-Agent": user_agent or DEFAULT_USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (user-provided sub URL)
         info = resp.headers.get("Subscription-Userinfo", "")

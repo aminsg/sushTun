@@ -8,12 +8,10 @@ reverted it by hand.
 """
 from __future__ import annotations
 
-import http.client
 import os
 import shutil
 import threading
 import time
-import urllib.request
 from collections.abc import Callable
 
 from .. import paths
@@ -56,6 +54,11 @@ class GeoUpdateError(Exception):
 
 
 def _default_fetch(url: str, timeout: float = 60.0) -> bytes:
+    # Local imports: urllib.request drags in ssl/http/email (~7 MB), and this
+    # module is imported at startup for the hourly geo-update timer.
+    import http.client
+    import urllib.request
+
     req = urllib.request.Request(url, headers={"User-Agent": "sushTun"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310

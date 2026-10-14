@@ -7,7 +7,6 @@ from __future__ import annotations
 import io
 from math import inf
 
-import segno
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
@@ -304,6 +303,10 @@ class QrDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(tr("QR — {name}", name=name))
         self._link = link
+
+        # Local import: segno (~8 MB) is only needed to draw this dialog, and
+        # this module is imported at startup for the server table itself.
+        import segno
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)

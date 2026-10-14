@@ -8,7 +8,6 @@ published in that format (e.g. Chocolate4U's Iran rules).
 from __future__ import annotations
 
 import json
-import urllib.request
 import uuid
 from collections.abc import Callable
 
@@ -155,6 +154,10 @@ def import_rules(text: str, fetch: Fetch | None = None) -> tuple[list[dict], int
 
 
 def _default_fetch(url: str, timeout: float = 20.0) -> str:
+    # Local import: urllib.request drags in ssl/http/email (~7 MB), and this
+    # module loads at startup via the routing page, long before any URL import.
+    import urllib.request
+
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (user-provided URL)
         return resp.read().decode("utf-8", errors="replace")

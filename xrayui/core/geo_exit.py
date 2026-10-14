@@ -8,8 +8,6 @@ through the tunnel itself) tells what the destination sees.
 from __future__ import annotations
 
 import json
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -72,15 +70,29 @@ def parse_trace(text: str) -> ExitInfo | None:
     return ExitInfo(country, fields.get("ip", ""))
 
 
-class ExplicitProxyHandler(urllib.request.ProxyHandler):
-    """A requested test proxy must not be silently bypassed by NO_PROXY."""
+def build_opener(proxy: str | None):
+    """An opener for plain HTTP(S) fetches: through the `proxy` HTTP URL, or
+    direct with proxying disabled when `proxy` is None.
 
-    def proxy_open(self, req, proxy, protocol):
-        parts = urllib.parse.urlsplit(proxy)
-        if parts.scheme != 'http' or not parts.netloc or parts.username:
-            raise ValueError('expected an unauthenticated HTTP test proxy')
-        req.set_proxy(parts.netloc, 'http')
-        return None
+    A requested test proxy must not be silently bypassed by NO_PROXY, so the
+    proxy is pinned per-request instead of read from the environment. urllib
+    is imported here (not at module top) so that importing this module --
+    done at startup for country names and flags -- never pays for ssl/http.
+    """
+    import urllib.request
+
+    class ExplicitProxyHandler(urllib.request.ProxyHandler):
+        def proxy_open(self, req, proxy, protocol):
+            parts = urllib.parse.urlsplit(proxy)
+            if parts.scheme != 'http' or not parts.netloc or parts.username:
+                raise ValueError('expected an unauthenticated HTTP test proxy')
+            req.set_proxy(parts.netloc, 'http')
+            return None
+
+    if proxy:
+        return urllib.request.build_opener(
+            ExplicitProxyHandler({"http": proxy, "https": proxy}))
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def detect(proxy=None, timeout: float = 8.0) -> ExitInfo | None:
@@ -90,13 +102,7 @@ def detect(proxy=None, timeout: float = 8.0) -> ExitInfo | None:
     a direct request: once connected the system route already is the tunnel.
     """
     try:
-        if hasattr(proxy, "open"):
-            opener = proxy
-        elif proxy:
-            opener = urllib.request.build_opener(
-                ExplicitProxyHandler({"http": proxy, "https": proxy}))
-        else:
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = proxy if hasattr(proxy, "open") else build_opener(proxy)
         with opener.open(TRACE_URL, timeout=timeout) as resp:
             body = resp.read(_MAX_BODY)
         return parse_trace(body.decode("utf-8", errors="replace"))

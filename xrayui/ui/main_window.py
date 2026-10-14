@@ -6,7 +6,6 @@ import secrets
 import sys
 import threading
 import time
-import urllib.parse
 
 from PySide6.QtCore import QEvent, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QShortcut
@@ -33,25 +32,19 @@ from ..core import (
     alerts,
     chain_test,
     chains,
-    geo_exit,
     hotspot,
-    importer,
-    metrics,
     network,
     speedtest,
 )
 from ..core import autostart as autostart_mod
-from ..core import geo as geo_mod
 from ..core import settings as app_settings
 from ..core import subscription as sub_mod
-from ..core import updates as updates_mod
 from ..core.alerts import human_bytes
 from ..core.connection import Connection, _resolve
 from ..core.profiles import Profile, ProfileStore
 from ..core.xray import is_xray_running
 from ..i18n import ltr, tr
 from . import clipboard_bridge
-from .dialogs import ImportDialog, ProfileEditDialog, SubscriptionEditDialog
 from .dns_dialog import DnsDialog
 from .flags import flag_pixmap
 from .help import set_help
@@ -65,7 +58,6 @@ from .pages.routing_page import RoutingPage
 from .pages.servers_page import ServersPage
 from .pages.subscriptions_page import SidebarSubscriptionList, SubscriptionsPage
 from .routing_dialog import RoutingDialog
-from .settings_window import SettingsWindow
 from .sidebar import Sidebar
 from .theme import ERR, HAIRLINE, MUTED, TEXT
 from .titlebar import TitleBar
@@ -744,6 +736,10 @@ class MainWindow(QMainWindow):
         return self.store.get(uid) if uid else None
 
     def _import(self) -> None:
+        # Local import: the dialogs (with importer/geo/updates behind them)
+        # open from slots, never at launch.
+        from .dialogs import ImportDialog
+
         dlg = ImportDialog(self)
         if not dlg.exec():
             return
@@ -762,6 +758,8 @@ class MainWindow(QMainWindow):
         profile = self.store.get(uid)
         if not profile:
             return
+        from .dialogs import ProfileEditDialog
+
         dlg = ProfileEditDialog(profile, self)
         if dlg.exec():
             self.store.save(dlg.result_profile())
@@ -823,6 +821,10 @@ class MainWindow(QMainWindow):
         if url:
             self._keep_as_subscription(url)
             return
+        # Local import: the share-link parser is only needed for a paste, and
+        # importing it at module top would load it on every startup.
+        from ..core import importer
+
         profiles = importer.parse_share_text(text)
         if not profiles:
             self.step_label.setText(
@@ -902,6 +904,8 @@ class MainWindow(QMainWindow):
             return
 
         def work():
+            from ..core import geo_exit
+
             return geo_exit.detect(None, 8.0)
 
         def done(result=None, error=None):
@@ -929,6 +933,7 @@ class MainWindow(QMainWindow):
             report = self.chain_results.get(uid) or {}
             country = detected[1].country if detected and detected[0] == uid else report.get('country')
             self.status_card.set_exit(country)
+            from ..core import geo_exit
             from ..i18n import current
             if country:
                 self.status_card._set_meta('country', tr('Exits in {country}',
@@ -1005,6 +1010,8 @@ class MainWindow(QMainWindow):
         self.sidebar.set_subscription_count(len(subs_list))
 
     def _add_sub(self) -> None:
+        from .dialogs import SubscriptionEditDialog
+
         dlg = SubscriptionEditDialog(sub_mod.Subscription(), self)
         if not dlg.exec():
             return
@@ -1018,6 +1025,8 @@ class MainWindow(QMainWindow):
         subscription, not a one-off import: its servers change, and fetching it
         once would leave them to go stale. The refresh below does the download
         off the UI thread and reports its own errors."""
+        import urllib.parse
+
         host = urllib.parse.urlsplit(url).hostname or ""
         sub = sub_mod.Subscription(url=url, name=host or sub_mod.Subscription().name)
         self.subs.save(sub)
@@ -1028,6 +1037,8 @@ class MainWindow(QMainWindow):
         sub = next((s for s in self.subs.list() if s.uid == uid), None)
         if not sub:
             return
+        from .dialogs import SubscriptionEditDialog
+
         dlg = SubscriptionEditDialog(sub, self)
         if dlg.exec():
             self.subs.save(dlg.result_subscription())
@@ -1140,12 +1151,18 @@ class MainWindow(QMainWindow):
         last_check = cfg.get("last_check") or 0
         if time.time() - last_check < 24 * 60 * 60:
             return
+        # Local import: the updater (with its urllib/ssl stack) is only needed
+        # for the daily check, not for showing the window.
+        from ..core import updates as updates_mod
+
         self._run_async(updates_mod.latest_release, self._on_update_checked)
 
     def check_updates_now(self, done=None) -> None:
         """Check because the user asked, ignoring both the switch and the
         once-a-day limit. `done(release_or_none)` is called either way, so
         Settings can say "you're up to date" instead of nothing at all."""
+        from ..core import updates as updates_mod
+
         def finished(result=None, error=None):
             self._on_update_checked(result=result, error=error)
             if done is not None:
@@ -1161,6 +1178,8 @@ class MainWindow(QMainWindow):
         if error or not result:
             return
         self._update_release = result
+        from ..core import updates as updates_mod
+
         if not updates_mod.is_newer(result.tag, __version__):
             return
         self.alert_banner.show_alert(
@@ -1345,6 +1364,7 @@ class MainWindow(QMainWindow):
         self._run_async(fn, done)
 
     def _ping_fn(self) -> str:
+        from ..core import metrics
         profile = self._active_profile()
         target = self.settings.get("ping_target", "1.1.1.1")
         parts = []
@@ -1356,6 +1376,7 @@ class MainWindow(QMainWindow):
         return "\n".join(parts)
 
     def _delay_fn(self) -> str:
+        from ..core import metrics
         profile = self._active_profile()
         if not profile:
             return "No active profile."
@@ -1372,6 +1393,7 @@ class MainWindow(QMainWindow):
         return "\n".join(lines)
 
     def _throughput_fn(self) -> str:
+        from ..core import metrics
         tun = self.conn.state.tun_index
         if tun is None:
             return "Not connected (no tunnel)."
@@ -1384,6 +1406,7 @@ class MainWindow(QMainWindow):
                 f"TX {s['tx']:,} bytes  ~{s['tx_mbps']} Mbit/s")
 
     def _baseline_fn(self) -> str:
+        from ..core import metrics
         tun = self.conn.state.tun_index
         if tun is None:
             return "Not connected (no tunnel)."
@@ -1394,6 +1417,7 @@ class MainWindow(QMainWindow):
         return metrics.format_baseline(s)
 
     def _diag_fn(self) -> str:
+        from ..core import metrics
         profile = self._active_profile()
         server_ip = self.conn.state.server_ip
         if not server_ip and profile:
@@ -1486,6 +1510,8 @@ class MainWindow(QMainWindow):
         self._sampling = True
 
         def work():
+            from ..core import metrics
+
             return {
                 # Only Windows has a cheap per-adapter counter; elsewhere
                 # done() derives the rate from the stats below instead.
@@ -1548,6 +1574,10 @@ class MainWindow(QMainWindow):
         self._run_async(work, self._on_conn_done)
 
     def _open_settings(self) -> None:
+        # Local import: the settings window (with geo/updates behind it) opens
+        # from a menu, never at launch.
+        from .settings_window import SettingsWindow
+
         old_mtu = self.settings.get("tun_mtu")
         old_log = self.settings.get("log_level")
         old_core = copy.deepcopy(self.settings.get("core"))
@@ -1828,6 +1858,10 @@ class MainWindow(QMainWindow):
         geo_cfg = self.settings.get("geo", {})
         hours = geo_cfg.get("auto_update_hours", 0)
         last = geo_cfg.get("last_update", 0)
+        # Local import: the geo updater (with its urllib/ssl stack) runs at
+        # most hourly, never for showing the window.
+        from ..core import geo as geo_mod
+
         if not geo_mod.is_due(last, hours):
             return
         self._geo_updating = True
