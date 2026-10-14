@@ -3,12 +3,14 @@
 ## v0.10.1
 
 ### Fixed
+- **Disconnecting is fast now.** The button used to leave the window looking connected for seconds while a dozen network commands ran one by one, and a stuck helper could hold the disconnect open with no bound at all. The button now says it is disconnecting at once, the cleanup steps run side by side, and every helper call gives up after a few seconds instead of hanging forever.
 - **macOS: copy and paste now work.** The window runs with administrator rights, and in that state Qt cannot reach the macOS clipboard at all, so Cmd+V found nothing and a copied link never left the app. Paste, copy and cut in text fields, the paste-to-import shortcut, the routing import and export, and the share-link copy button now use your own clipboard directly.
 - **macOS: no second "sushTun" in the Dock and Cmd+Tab.** The helper that asks for the administrator password used to stay alive for the whole session, and macOS listed it as another copy of the app. It now exits as soon as the password is accepted, and a start that fails right away (privacy protection) is still recognised.
 
 <!-- fa -->
 
 ### چی درست شده
+- **قطع کردن سریع شد.** قبلاً وقتی Disconnect رو می‌زدی، برنامه چند ثانیه همون‌جوری وصل نشون می‌داد چون یه مشت دستور شبکه رو دونه‌دونه اجرا می‌کرد، و اگه یه ابزار گیر می‌کرد قطع شدن دیگه هیچ‌وقت تموم نمی‌شد. حالا دکمه همون لحظه می‌گه داره قطع می‌کنه، تمیزکاری‌ها با هم انجام می‌شن، و هر دستوری که گیر کنه بعد چند ثانیه بی‌خیالش می‌شه.
 - **مک: کپی و پیست دوباره کار می‌کنه.** پنجره‌ی برنامه با دسترسی ادمین اجرا می‌شه و تو این حالت Qt اصلاً به کلیپ‌بورد macOS دسترسی نداره؛ برای همین Cmd+V چیزی پیدا نمی‌کرد و لینکی که کپی می‌کردی از برنامه بیرون نمی‌رفت. حالا پیست، کپی و کات تو فیلدهای متنی، میان‌بر پیست برای import، import و export قوانین مسیریابی و دکمه‌ی کپی لینک اشتراک مستقیم از کلیپ‌بورد خودت استفاده می‌کنن.
 - **مک: دیگه sushTun دوم تو Dock و Cmd+Tab نمی‌مونه.** ابزار کمکی‌ای که رمز ادمین رو می‌پرسید تا آخر برنامه زنده می‌موند و macOS اون رو یه نسخه‌ی دیگه از برنامه نشون می‌داد. حالا همین‌که رمز قبول شد بسته می‌شه، و اگه برنامه همون لحظه‌ی اول بالا نیاد (مثلاً به‌خاطر حفاظت حریم خصوصی) هنوز تشخیص داده می‌شه.
 

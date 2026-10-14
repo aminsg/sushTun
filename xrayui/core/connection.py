@@ -9,6 +9,7 @@ import socket
 import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .. import paths
@@ -619,12 +620,25 @@ class Connection:
         actions = [self.xray.stop, lambda: network.remove_routes(server_ip)]
         if IS_MAC:
             actions.insert(0, self.tun2socks.stop)
-        for action in actions:
+        # The two process stops and the route sweep touch nothing in common,
+        # so they run side by side: sequentially they were seconds (a dozen
+        # `route`/`networksetup` calls on macOS). Every action is still
+        # attempted even if another fails, exactly as the loop before did.
+        # DNS restore stays after this barrier: on macOS the DHCP servers
+        # live on the LAN, so restoring DNS before the tunnel routes are gone
+        # would send lookups into the dying tunnel.
+        def guarded(action):
             try:
                 action()
             except Exception as exc:
-                cleanup_ok = False
-                self._log(f"WARNING: teardown operation failed: {exc}")
+                return f"WARNING: teardown operation failed: {exc}"
+            return None
+
+        with ThreadPoolExecutor(max_workers=len(actions)) as pool:
+            for warning in pool.map(guarded, actions):
+                if warning is not None:
+                    cleanup_ok = False
+                    self._log(warning)
         restored = True
         try:
             if alias:

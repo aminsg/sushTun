@@ -1303,12 +1303,19 @@ class MainWindow(QMainWindow):
         if self._busy:
             return
         self._set_busy(True)
+        # Immediate feedback on the UI thread: the worker only reports
+        # "Disconnecting..." once it is scheduled, which left the button
+        # feeling dead on a loaded machine. The header keeps showing
+        # Connected until the teardown actually finishes (see _on_conn_done),
+        # so nobody acts on a network that is not safe yet.
+        self.step_label.setText(tr("Disconnecting..."))
         self._run_async(self.conn.disconnect, self._on_conn_done)
 
     def _cleanup(self) -> None:
         if self._busy:
             return
         self._set_busy(True)
+        self.step_label.setText(tr("Disconnecting..."))
         self._run_async(self.conn.cleanup, self._on_conn_done)
 
     def _on_conn_done(self, result=None, error: str | None = None) -> None:
@@ -1540,6 +1547,7 @@ class MainWindow(QMainWindow):
         if not profile:
             return
         self._set_busy(True)
+        self.step_label.setText(tr("Disconnecting..."))
 
         def work():
             self.conn.disconnect()
