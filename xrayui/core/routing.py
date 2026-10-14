@@ -94,6 +94,21 @@ def _norm_domain(d: str) -> str:
     return d if d.startswith(_PREFIXES) else f"domain:{d}"
 
 
+def _sanitize_simple_domain(entry) -> str | None:
+    # Same policy as custom rules (convert_user_rule): a bad line is dropped,
+    # never the whole config. Custom rules keep any domain text, but a typo
+    # with whitespace ("exa mple.com") would invalidate the rendered config,
+    # so simple-mode entries carrying whitespace are dropped here.
+    if not isinstance(entry, str):
+        return None
+    d = entry.replace("<COMMA>", ",").strip()
+    if not d or d.startswith("#"):
+        return None
+    if any(c.isspace() for c in d):
+        return None
+    return _norm_domain(d)
+
+
 def _simple_rules(r: dict) -> list[dict]:
     rules: list[dict] = []
 
@@ -115,15 +130,25 @@ def _simple_rules(r: dict) -> list[dict]:
             direct_ips.extend(ips)
     if r.get("low_usage"):
         direct_domains.extend(low_usage_domains())
-    direct_domains.extend(_norm_domain(d) for d in r.get("bypass_domains", []) if d.strip())
-    direct_ips.extend(ip.strip() for ip in r.get("bypass_ips", []) if ip.strip())
+    for d in _coerce_str_list(r.get("bypass_domains", [])):
+        normed = _sanitize_simple_domain(d)
+        if normed:
+            direct_domains.append(normed)
+    for ip in _coerce_str_list(r.get("bypass_ips", [])):
+        good = _sanitize_ip(ip)
+        if good:
+            direct_ips.append(good)
 
     if direct_domains:
         rules.append({"type": "field", "domain": direct_domains, "outboundTag": "direct"})
     if direct_ips:
         rules.append({"type": "field", "ip": direct_ips, "outboundTag": "direct"})
 
-    proxy_domains = [_norm_domain(d) for d in r.get("proxy_domains", []) if d.strip()]
+    proxy_domains = []
+    for d in _coerce_str_list(r.get("proxy_domains", [])):
+        normed = _sanitize_simple_domain(d)
+        if normed:
+            proxy_domains.append(normed)
     if proxy_domains:
         rules.append({"type": "field", "domain": proxy_domains, "outboundTag": "proxy"})
 
