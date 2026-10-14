@@ -5,12 +5,14 @@
 ### Fixed
 - **macOS: copy and paste now work.** The window runs with administrator rights, and in that state Qt cannot reach the macOS clipboard at all, so Cmd+V found nothing and a copied link never left the app. Paste, copy and cut in text fields, the paste-to-import shortcut, the routing import and export, and the share-link copy button now use your own clipboard directly.
 - **macOS: no second "sushTun" in the Dock and Cmd+Tab.** The helper that asks for the administrator password used to stay alive for the whole session, and macOS listed it as another copy of the app. It now exits as soon as the password is accepted, and a start that fails right away (privacy protection) is still recognised.
+- **macOS: a proper menu bar.** The app menu now has About sushTun, Settings… (`Cmd+,`), Hide sushTun (`Cmd+H`) and Quit sushTun (`Cmd+Q`), and there are Edit (Cut/Copy/Paste/Select All), Window (Minimize, Zoom, Close Window) and Help menus with Mac-standard shortcuts. Clicking the Dock icon brings back a hidden window, a login launch always starts in the menu bar instead of popping a window (and asking for the password) right after login, and notifications stay quiet while you are looking at the window. The update screen for an installed app names the `sushTun-macos.dmg` file to download.
 
 <!-- fa -->
 
 ### چی درست شده
 - **مک: کپی و پیست دوباره کار می‌کنه.** پنجره‌ی برنامه با دسترسی ادمین اجرا می‌شه و تو این حالت Qt اصلاً به کلیپ‌بورد macOS دسترسی نداره؛ برای همین Cmd+V چیزی پیدا نمی‌کرد و لینکی که کپی می‌کردی از برنامه بیرون نمی‌رفت. حالا پیست، کپی و کات تو فیلدهای متنی، میان‌بر پیست برای import، import و export قوانین مسیریابی و دکمه‌ی کپی لینک اشتراک مستقیم از کلیپ‌بورد خودت استفاده می‌کنن.
 - **مک: دیگه sushTun دوم تو Dock و Cmd+Tab نمی‌مونه.** ابزار کمکی‌ای که رمز ادمین رو می‌پرسید تا آخر برنامه زنده می‌موند و macOS اون رو یه نسخه‌ی دیگه از برنامه نشون می‌داد. حالا همین‌که رمز قبول شد بسته می‌شه، و اگه برنامه همون لحظه‌ی اول بالا نیاد (مثلاً به‌خاطر حفاظت حریم خصوصی) هنوز تشخیص داده می‌شه.
+- **مک: منوی درست‌وحسابی.** منوی برنامه حالا About sushTun، Settings… (`Cmd+,`)، Hide sushTun (`Cmd+H`) و Quit sushTun (`Cmd+Q`) داره، و منوهای Edit (کات/کپی/پیست/انتخاب همه)، Window (کوچک کردن، زوم، بستن پنجره) و Help هم با میان‌برهای استاندارد مک اضافه شدن. کلیک روی آیکون Dock پنجره‌ی پنهان رو برمی‌گردونه، اجرای موقع ورود همیشه تو نوار منو شروع می‌شه و دیگه بلافاصله بعد از ورود پنجره باز نمی‌کنه (و رمز نمی‌خواد)، و وقتی داری به پنجره نگاه می‌کنی اعلان اضافه نمیاد. صفحه‌ی آپدیت برای نسخه‌ی نصبی هم اسم فایل `sushTun-macos.dmg` رو می‌گه که دانلود کنی.
 
 ## v0.10.0
 

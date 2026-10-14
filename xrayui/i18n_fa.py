@@ -997,6 +997,8 @@ TRANSLATIONS_FA: dict[str, str] = {
         "وقتی کامپیوترتان را روشن می‌کنید چه اتفاقی بیفتد.",
     "Have sushTun waiting in the tray before you open a browser.":
         "قبل از اینکه مرورگر را باز کنید، sushTun توی سینی منتظرتان باشد.",
+    "Have sushTun waiting in the menu bar before you open a browser.":
+        "قبل از اینکه مرورگر را باز کنید، sushTun توی نوار منو منتظرتان باشد.",
     "One local port where each username leaves through a different server.":
         "یک پورت محلی که هر نام کاربری از طریق یک سرور متفاوت بیرون می‌رود.",
     "Two browsers, two countries, at the same time.":
@@ -1223,6 +1225,8 @@ TRANSLATIONS_FA: dict[str, str] = {
         "عدد 24 یعنی روزی یک‌بار.",
     "Starts hidden in the tray instead of opening its window.":
         "به‌جای باز کردن پنجره، پنهان در سینی شروع می‌شود.",
+    "Starts hidden in the menu bar instead of opening its window.":
+        "به‌جای باز کردن پنجره، پنهان در نوار منو شروع می‌شود.",
     "It runs quietly until you need it.":
         "بی‌صدا کار می‌کند تا وقتی که لازمش داشته باشید.",
     "Connects to your active server as soon as sushTun starts.":
@@ -1257,6 +1261,8 @@ TRANSLATIONS_FA: dict[str, str] = {
         "هر بار که وارد کامپیوترتان می‌شوید، sushTun خودش باز می‌شود.",
     "Boot up and it is already waiting in the tray.":
         "کامپیوتر را روشن می‌کنید و sushTun از قبل توی سینی منتظر است.",
+    "Boot up and it is already waiting in the menu bar.":
+        "کامپیوتر را روشن می‌کنید و sushTun از قبل توی نوار منو منتظر است.",
     "Shares the tunnel with other devices through a Wi-Fi hotspot, so they need no setup. It starts when you connect; the name and password are in Settings.":
         "تونل را از طریق یک هات‌اسپات وای‌فای با دستگاه‌های دیگر به اشتراک می‌گذارد تا نیازی به تنظیم نداشته باشند. وقتی وصل می‌شوید شروع می‌شود؛ نام و رمزش در تنظیمات است.",
     "A friend's phone needs the tunnel? Let it join your laptop's hotspot.":
@@ -1412,6 +1418,20 @@ TRANSLATIONS_FA: dict[str, str] = {
         "دیگری منتقل کنید و دوباره باز کنید.",
     "Show": "نمایش",
     "Quit": "خروج",
+    # -- macOS-native menu bar (darwin only) -------------------------------
+    "About sushTun": "درباره sushTun",
+    "Settings…": "تنظیمات…",
+    "Hide sushTun": "پنهان کردن sushTun",
+    "Quit sushTun": "خروج از sushTun",
+    "Cut": "برش",
+    "Copy": "کپی",
+    "Paste": "چسباندن",
+    "Select All": "انتخاب همه",
+    "Window": "پنجره",
+    "Close Window": "بستن پنجره",
+    "Help": "راهنما",
+    "sushTun Help": "راهنمای sushTun",
+    "Start hidden in the menu bar": "شروع پنهان در نوار منو",
     "Delete {n} server(s)?": "{n} سرور حذف شود؟",
     "Active server changed": "سرور فعال تغییر کرد",
     "Clipboard has no importable server link.": "کلیپ‌بورد شامل لینک قابل‌وارد‌کردنی نیست.",
@@ -1458,6 +1478,8 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Hotspot could not start: {error}": "هات‌اسپات روشن نشد: {error}",
     "Still running here. Quit from this icon's menu, or press Ctrl+Q.":
         "همچنان در حال اجراست. از منوی این آیکون خارج شوید یا Ctrl+Q را بزنید.",
+    "Still running in the menu bar. Quit from this icon's menu, or press Cmd+Q.":
+        "همچنان در نوار منو در حال اجراست. از منوی این آیکون خارج شوید یا Cmd+Q را بزنید.",
 
     # -- dialogs.py: SettingsDialog language ---------------------------------
     "Language": "زبان",
@@ -1567,6 +1589,8 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Add your servers": "سرورهایتان را اضافه کنید",
     "Copy a server link or your provider's subscription URL, then press Import. Ctrl+V works too. A link looks like vless://…":
         "لینک یک سرور یا آدرس اشتراکی را که ارائه‌دهنده‌تان داده کپی کنید و «وارد کردن» را بزنید. Ctrl+V هم جواب می‌دهد. لینک‌ها شبیه vless://… هستند.",
+    "Copy a server link or your provider's subscription URL, then press Import. Cmd+V works too. A link looks like vless://…":
+        "لینک یک سرور یا آدرس اشتراکی را که ارائه‌دهنده‌تان داده کپی کنید و «وارد کردن» را بزنید. Cmd+V هم جواب می‌دهد. لینک‌ها شبیه vless://… هستند.",
     "Your server list": "فهرست سرورها",
     "Press Test to see each server's ping and the flag of the country it really exits from. Then pick the one you like.":
         "«تست» را بزنید تا پینگ هر سرور و پرچم کشوری را که واقعاً از آن بیرون می‌روید ببینید. بعد هرکدام را که خواستید انتخاب کنید.",
