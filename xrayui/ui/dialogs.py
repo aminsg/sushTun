@@ -1294,8 +1294,6 @@ class SubscriptionEditDialog(QDialog):
     def __init__(self, sub: Subscription, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("Edit subscription"))
-        # Wide enough for a label, its footnote and the field side by side.
-        self.resize(560, 0)
         self._sub = sub
         # Auto-fill Name from the URL's host, same as the old bare "paste a
         # URL" Add flow -- but only until the user actually types a name of
@@ -1379,6 +1377,12 @@ class SubscriptionEditDialog(QDialog):
         for btn in self.findChildren(QPushButton):
             btn.setAutoDefault(btn is buttons.button(QDialogButtonBox.Save))
         _mark_primary(buttons.button(QDialogButtonBox.Save))
+        # Wide enough that the name-filter placeholder fits unelided, and
+        # tall enough that the wrapping footnotes show every line: a height
+        # of 0 collapses each row to its single-line minimum and cuts the
+        # footnotes mid-sentence. Sized after the layout exists so the
+        # height comes from the real content in this language.
+        self.resize(660, self.sizeHint().height())
 
     def _stop_autofill_name(self, _text: str) -> None:
         self._name_auto = False
