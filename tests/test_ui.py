@@ -28,8 +28,10 @@ else:
 # Must be set before the first QApplication; there is no display on a CI runner.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox  # noqa: E402
+from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QLabel, QMessageBox  # noqa: E402
 
+from xrayui import i18n as i18n_mod  # noqa: E402
 from xrayui import paths  # noqa: E402
 from xrayui.core import dns as dns_mod  # noqa: E402
 from xrayui.core import hotspot as hotspot_mod  # noqa: E402
@@ -1134,6 +1136,38 @@ def test_subscription_edit_dialog_autofills_name_from_url_host(qapp):
     dlg.f_url.setText("https://sub.example.com/abc123")
     dlg._maybe_autofill_name(dlg.f_url.text())
     assert dlg.f_name.text() == "sub.example.com"
+
+
+def test_subscription_edit_dialog_footnotes_and_placeholder_fit(qapp):
+    # T1-SUB-FOOTNOTE: at the default size the footnotes were cut
+    # mid-sentence (rows collapsed to one line) and the filter placeholder
+    # elided. Both languages must show every footnote line in full.
+    old = i18n_mod.current()
+    try:
+        for lang in ("en", "fa"):
+            i18n_mod.set_language(lang)
+            dlg = SubscriptionEditDialog(
+                Subscription(url="https://sub.example.com/main", name="Main plan"))
+            dlg.show()
+            QApplication.processEvents()
+            notes = [lab for lab in dlg.findChildren(QLabel)
+                     if lab.objectName() == "GroupRowFootnote"]
+            assert len(notes) == 2
+            for note in notes:
+                need = note.fontMetrics().boundingRect(
+                    0, 0, max(note.width(), 10), 1000,
+                    Qt.TextWordWrap, note.text()).height()
+                assert note.height() >= need - 2, \
+                    f"[{lang}] footnote cut: {note.text()!r}"
+            field = dlg.f_name_filter
+            assert field.width() >= \
+                field.fontMetrics().horizontalAdvance(field.placeholderText()), \
+                f"[{lang}] placeholder elided"
+            dlg.close()
+            dlg.deleteLater()
+    finally:
+        i18n_mod.set_language(old)
+    QApplication.processEvents()
 
 
 def test_add_sub_uses_the_edit_dialog(window, monkeypatch):

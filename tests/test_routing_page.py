@@ -134,3 +134,40 @@ def test_enter_in_the_domains_editor_inserts_a_newline_not_an_apply(qapp, monkey
     QTest.keyClick(page.domains, Qt.Key_Return)
     assert not calls  # Return is a new paragraph, never a save
     assert "\n" in page.domains.toPlainText()
+
+
+def test_sets_io_buttons_have_sensible_width_and_grouping(qapp):
+    # T2-UX3: Import/Export sat squeezed (~90px) side by side in the narrow
+    # left column while the rest of the row stayed empty. They must read as
+    # their own full-width group at 900px and at the minimum window size.
+    import copy
+
+    from xrayui import i18n
+    old = i18n.current()
+    try:
+        for lang in ("en", "fa"):
+            i18n.set_language(lang)
+            routing = copy.deepcopy(DEFAULTS["routing"])
+            page = RoutingPage(routing)
+            page._add_set("empty")
+            page.show()
+            page.resize(900, 600)
+            page.tabs.setCurrentIndex(1)
+            _pump(lambda p=page: p.btn_export_sets.width() > 53)
+            narrow = (page.btn_import_sets.width(), page.btn_export_sets.width())
+            assert narrow[0] >= 150, f"[{lang}] {narrow}"
+            assert narrow[1] >= 150, f"[{lang}] {narrow}"
+            # A grouped pair: same width, stacked in one column.
+            assert abs(narrow[0] - narrow[1]) <= 4, f"[{lang}] {narrow}"
+            assert page.btn_import_sets.y() != page.btn_export_sets.y()
+
+            page.resize(page.minimumSize())
+            QApplication.processEvents()
+            small = (page.btn_import_sets.width(), page.btn_export_sets.width())
+            assert small[0] >= 90, f"[{lang}] {small}"
+            assert small[1] >= 90, f"[{lang}] {small}"
+            assert abs(small[0] - small[1]) <= 4, f"[{lang}] {small}"
+            page.close()
+            page.deleteLater()
+    finally:
+        i18n.set_language(old)

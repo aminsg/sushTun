@@ -34,3 +34,15 @@ def test_truncation_restarts_from_the_beginning(tmp_path):
     log.write_text("fresh\n", encoding="utf-8")  # reconnect truncates the log
     batch, _ = read_new_lines(log, pos)
     assert batch == ["fresh"]
+
+
+def test_missing_file_reads_as_no_new_lines(tmp_path):
+    # A fresh install or a rotated log is normal -- the follower polls and
+    # the file may appear later, so this must not raise.
+    missing = tmp_path / "xray.log"
+    batch, pos = read_new_lines(missing, None)
+    assert batch == []
+    assert pos == 0
+    batch, pos2 = read_new_lines(missing, 41)
+    assert batch == []
+    assert pos2 == 41  # a known position survives the missing read
