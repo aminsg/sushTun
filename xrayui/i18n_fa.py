@@ -1396,6 +1396,22 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Reconnect now": "اتصال دوباره",
     "Live log": "گزارش زنده",
     "Tools": "ابزارها",
+    "Filter log…": "فیلتر گزارش…",
+    "Copy": "کپی",
+    "Clear": "پاک کردن",
+    "Connect to see xray's output here.": "وصل شوید تا خروجی xray را همین‌جا ببینید.",
+    "Shows only the log lines containing what you type.":
+        "فقط خط‌هایی از گزارش را نشان می‌دهد که متن شما را داشته باشند.",
+    "Type \"error\" to see only the failures.":
+        "«error» را بنویسید تا فقط خطاها را ببینید.",
+    "Copies the log lines you see right now.":
+        "خط‌هایی از گزارش را که همین حالا می‌بینید کپی می‌کند.",
+    "Paste them into a message when asking for help.":
+        "وقتی کمک می‌خواهید، آن‌ها را در پیامتان بچسبانید.",
+    "Empties the log view. New lines keep arriving.":
+        "نمای گزارش را خالی می‌کند. خط‌های جدید همچنان می‌رسند.",
+    "Clear it right before connecting to catch fresh output.":
+        "درست قبل از وصل شدن پاکش کنید تا خروجی تازه را بگیرید.",
     "macOS cannot run a Wi-Fi hotspot while it is itself on Wi-Fi. To share the tunnel, "
     "turn on Settings → Local proxy → Allow other devices on your network, and set this "
     "Mac as the proxy on the other device.":
@@ -1766,8 +1782,11 @@ TRANSLATIONS_FA: dict[str, str] = {
     "The template has no proxy outbound for the chain.": "قالب فاقد خروجی proxy برای زنجیره است.",
 
     # -- Chains: card details -----------------------------------------------
+    # The tile units stay short on purpose: at the minimum window width the
+    # metric tiles are ~110px, and the full "مگابیت/ثانیه" pushed value+unit
+    # onto two lines. The tile caption already says Download/دریافت.
     'ms': 'میلی‌ثانیه',
-    'Mbit/s': 'مگابیت/ثانیه',
+    'Mbit/s': 'مگابیت',
     'Tested just now': 'همین الان آزمایش شد',
     'Tested {n} min ago': '{n} دقیقه پیش',
     'Tested {n} hours ago': '{n} ساعت پیش',

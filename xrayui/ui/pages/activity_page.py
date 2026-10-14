@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QStackedWidget,
     QTabBar,
@@ -108,7 +109,7 @@ class ActivityPage(QWidget):
         self.log = LogView()
         self.tools = ToolsPanel()
         self.diagnostics = _DiagnosticsPanel()
-        for widget in (self.log, self.tools, self.diagnostics):
+        for widget in (self._build_log_tab(), self.tools, self.diagnostics):
             self.stack.addWidget(widget)
         outer.addWidget(self.stack, 1)
         self.tabs.currentChanged.connect(self.stack.setCurrentIndex)
@@ -122,8 +123,42 @@ class ActivityPage(QWidget):
         self.tools.diagnosticsRequested.connect(self.diagnosticsRequested)
         self.diagnostics.runRequested.connect(self.diagnosticsRequested)
 
+    def _build_log_tab(self) -> QWidget:
+        """The Live log tab: a compact toolbar (filter, Copy, Clear, same
+        row pattern as the Servers table's toolbar) above the log view."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        bar = QHBoxLayout()
+        bar.setSpacing(8)
+        self.log_filter = QLineEdit()
+        self.log_filter.setPlaceholderText(tr("Filter log…"))
+        set_help(self.log_filter,
+                 tr("Shows only the log lines containing what you type."),
+                 tr("Type \"error\" to see only the failures."))
+        self.log_filter.textChanged.connect(self.log.set_filter)
+        bar.addWidget(self.log_filter, 1)
+        self.btn_copy_log = QPushButton(tr("Copy"))
+        self.btn_copy_log.clicked.connect(self.log.copy_visible)
+        set_help(self.btn_copy_log,
+                 tr("Copies the log lines you see right now."),
+                 tr("Paste them into a message when asking for help."))
+        bar.addWidget(self.btn_copy_log)
+        self.btn_clear_log = QPushButton(tr("Clear"))
+        self.btn_clear_log.clicked.connect(self.log.clear_log)
+        set_help(self.btn_clear_log,
+                 tr("Empties the log view. New lines keep arriving."),
+                 tr("Clear it right before connecting to catch fresh output."))
+        bar.addWidget(self.btn_clear_log)
+        layout.addLayout(bar)
+        layout.addWidget(self.log, 1)
+        return tab
+
     def set_busy(self, busy: bool) -> None:
         self.tools.set_busy(busy)
 
     def append_log(self, line: str) -> None:
-        self.log.append(line)
+        # append_line, not QTextEdit.append: the view's filter buffer must
+        # see every line or filtering and Copy drift from what's shown.
+        self.log.append_line(line)
