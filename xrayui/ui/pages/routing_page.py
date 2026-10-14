@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QTableView,
     QTabWidget,
     QToolButton,
@@ -508,8 +509,15 @@ class RoutingPage(QWidget):
             set_btns.addWidget(b)
         left.addLayout(set_btns)
 
-        io_btns = QHBoxLayout()
+        # Import/Export stack full-width down the narrow left column: side
+        # by side they squeezed to ~90px each while the rest of the row
+        # stayed empty, reading as one jumbled block with the row above.
+        io_btns = QVBoxLayout()
+        io_btns.setSpacing(6)
         btn_import = QToolButton()
+        # Fill the column: a vertical layout otherwise keeps each button at
+        # its ~90px hint width, the original squeeze in a new direction.
+        btn_import.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn_import.setText(tr("Import"))
         btn_import.setPopupMode(QToolButton.InstantPopup)
         import_menu = QMenu(btn_import)
@@ -528,6 +536,7 @@ class RoutingPage(QWidget):
                  tr("Brings in rule sets made elsewhere."),
                  tr("Borrow a tested set instead of writing one."))
         btn_export = QToolButton()
+        btn_export.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn_export.setText(tr("Export"))
         btn_export.setPopupMode(QToolButton.InstantPopup)
         export_menu = QMenu(btn_export)
@@ -546,6 +555,8 @@ class RoutingPage(QWidget):
                  tr("Give your setup to someone who just installed sushTun."))
         io_btns.addWidget(btn_import)
         io_btns.addWidget(btn_export)
+        self.btn_import_sets = btn_import
+        self.btn_export_sets = btn_export
         left.addLayout(io_btns)
         row.addLayout(left, 1)
 
