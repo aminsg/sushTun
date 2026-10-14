@@ -74,7 +74,7 @@ def _parse_ruleset_field(raw) -> list:
     if isinstance(raw, str) and raw.strip():
         try:
             data = json.loads(raw)
-        except ValueError:
+        except (ValueError, RecursionError):
             return []
         return data if isinstance(data, list) else []
     return []
@@ -91,7 +91,7 @@ def _set_from_routing_item(item: dict, fetch: Fetch | None) -> tuple[dict, int] 
             return None
         try:
             data = json.loads(fetch(url))
-        except (ValueError, OSError):
+        except (ValueError, OSError, RecursionError):
             return None
     else:
         data = _parse_ruleset_field(ruleset_raw)
@@ -100,6 +100,11 @@ def _set_from_routing_item(item: dict, fetch: Fetch | None) -> tuple[dict, int] 
         return None
 
     rules, skipped = _rules_from_array(data)
+    if not rules:
+        # An empty ruleSet (or one where every rule had an unsupported
+        # outboundTag) is nothing to import, not an empty set the page
+        # would add and announce as imported.
+        return None
     rule_set = {
         "id": uuid.uuid4().hex,
         "name": name,
@@ -119,7 +124,7 @@ def import_rules(text: str, fetch: Fetch | None = None) -> tuple[list[dict], int
     """
     try:
         data = json.loads(text.lstrip("\ufeff"))  # json refuses a BOM outright
-    except ValueError:
+    except (ValueError, RecursionError):
         return [], 0
 
     if isinstance(data, list):
