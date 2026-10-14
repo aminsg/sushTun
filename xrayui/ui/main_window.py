@@ -75,6 +75,12 @@ from .widgets import AlertBanner
 # how far in from the border a press starts a resize on the frameless window
 _RESIZE_MARGIN = 6
 _MAX_TRAY_SERVERS = 20
+# Polling intervals. The status tick only feeds on-screen widgets, so it
+# stops while the window is hidden; the route-health check supervises the
+# tunnel from the tray, so hidden it slows to a minute instead of stopping.
+_STATUS_MS = 2000
+_ROUTE_MS = 15_000
+_ROUTE_HIDDEN_MS = 60_000
 _EDGE_CURSORS = {
     Qt.LeftEdge: Qt.SizeHorCursor,
     Qt.RightEdge: Qt.SizeHorCursor,
@@ -338,6 +344,7 @@ class MainWindow(QMainWindow):
         self._workers: set = set()
         self._test_cancel: threading.Event | None = None
         self._geo_updating = False
+        self._subtitle_pix = None
 
         self.stepReceived.connect(self._on_step)
         self.testResultReceived.connect(self._on_test_result)
@@ -354,29 +361,37 @@ class MainWindow(QMainWindow):
         self._refresh_routing_combo()
 
         self.tailer = LogTailer()
-        self.tailer.lines.connect(self.log.append_lines)
+        self._pending_log: list[str] = []
+        self.tailer.lines.connect(self._on_log_lines)
         self.tailer.start()
 
         self.timer = QTimer(self)
+        self.timer.setTimerType(Qt.CoarseTimer)
         self.timer.timeout.connect(self._refresh_status)
-        self.timer.start(2000)
+        self.timer.start(_STATUS_MS)
         self.alert_timer = QTimer(self)
+        self.alert_timer.setTimerType(Qt.CoarseTimer)
         self.alert_timer.timeout.connect(self._check_alerts)
         self.alert_timer.start(60_000)
         self.autorefresh_timer = QTimer(self)
+        self.autorefresh_timer.setTimerType(Qt.VeryCoarseTimer)
         self.autorefresh_timer.timeout.connect(self._auto_refresh_subs)
         self.autorefresh_timer.start(30 * 60_000)
         self.route_timer = QTimer(self)
+        self.route_timer.setTimerType(Qt.CoarseTimer)
         self.route_timer.timeout.connect(self._check_route_health)
-        self.route_timer.start(15_000)
+        self.route_timer.start(_ROUTE_MS)
         self.geo_timer = QTimer(self)
+        self.geo_timer.setTimerType(Qt.VeryCoarseTimer)
         self.geo_timer.timeout.connect(self._maybe_auto_update_geo)
         self.geo_timer.start(60 * 60_000)
         QTimer.singleShot(60_000, self._maybe_auto_update_geo)
         self.update_check_timer = QTimer(self)
+        self.update_check_timer.setTimerType(Qt.VeryCoarseTimer)
         self.update_check_timer.timeout.connect(self._maybe_check_updates)
         self.update_check_timer.start(24 * 60 * 60_000)
         QTimer.singleShot(60_000, self._maybe_check_updates)
+        self._apply_polling_policy()
 
         self._reload_profiles()
         self._reload_subs()
@@ -833,15 +848,20 @@ class MainWindow(QMainWindow):
         plan = self._connected_chain if connected and self.conn.state.chain_uid else None
         pix = None
         if connected and profile:
-            self.toolbar.subtitle.setText(
-                ltr(tr("Connected · {server}",
-                       server=plan.name if plan else profile.name)))
+            text = ltr(tr("Connected · {server}",
+                          server=plan.name if plan else profile.name))
             pix = flag_pixmap(self.profiles.model.country_of(profile.uid), 16, 12)
         else:
-            self.toolbar.subtitle.setText(tr("Disconnected"))
-        self.toolbar.subtitle_flag.setVisible(pix is not None)
-        if pix is not None:
-            self.toolbar.subtitle_flag.setPixmap(pix)
+            text = tr("Disconnected")
+        # Every status tick lands here: skip the setText/setPixmap (and the
+        # repaint each triggers) when nothing actually changed.
+        if self.toolbar.subtitle.text() != text:
+            self.toolbar.subtitle.setText(text)
+        if pix is not self._subtitle_pix:
+            self._subtitle_pix = pix
+            self.toolbar.subtitle_flag.setVisible(pix is not None)
+            if pix is not None:
+                self.toolbar.subtitle_flag.setPixmap(pix)
 
     # ── profiles ----------------------------------------------------------
 
@@ -1492,6 +1512,10 @@ class MainWindow(QMainWindow):
         # The connection ended either way: nothing left to reconnect, so the
         # whole notice goes, not just its button.
         self.status_card.hide_reconnect()
+        # A connect/disconnect that lands while hidden flips what the
+        # polling policy must supervise (route check) — re-arm it. The tray
+        # already moved via _set_busy()/_refresh_status() above and below.
+        self._apply_polling_policy()
         self._refresh_status()
         self._reload_chains()
         if not error and self.conn.is_connected():
@@ -1578,6 +1602,53 @@ class MainWindow(QMainWindow):
                 server_ip = None
         return metrics.diagnostics(
             server_ip, self.conn.state.alias, self.conn.state.tun_index)
+
+    # ── idle policy: nothing UI-only runs while hidden ──────────────────
+
+    def _ui_visible(self) -> bool:
+        return self.isVisible() and not self.isMinimized()
+
+    def _apply_polling_policy(self) -> None:
+        """Stop UI-only work while hidden or minimised, resume on show.
+
+        The status tick and the log appends only feed on-screen widgets, so
+        they pause; the route-health check supervises the tunnel from the
+        tray, so while connected it slows to a minute instead of stopping.
+        Showing the window resumes everything and refreshes at once.
+        """
+        if self._ui_visible():
+            self.tailer.interval = LogTailer.INTERVAL
+            if not self.timer.isActive():
+                self.timer.start(_STATUS_MS)
+            if (not self.route_timer.isActive()
+                    or self.route_timer.interval() != _ROUTE_MS):
+                self.route_timer.start(_ROUTE_MS)
+            self._flush_pending_log()
+            return
+        self.tailer.interval = LogTailer.IDLE_INTERVAL
+        self.timer.stop()
+        if self.conn.is_connected():
+            if (not self.route_timer.isActive()
+                    or self.route_timer.interval() != _ROUTE_HIDDEN_MS):
+                self.route_timer.start(_ROUTE_HIDDEN_MS)
+        else:
+            self.route_timer.stop()
+
+    def _on_log_lines(self, lines: list[str]) -> None:
+        if not lines:
+            return
+        if not self._ui_visible():
+            # Nobody is watching: keep only the newest batch for the next
+            # show instead of laying out text no one sees. The file keeps
+            # everything; the view is capped by the document block limit.
+            self._pending_log = [*self._pending_log, *lines][-500:]
+            return
+        self.log.append_lines(lines)
+
+    def _flush_pending_log(self) -> None:
+        if self._pending_log:
+            pending, self._pending_log = self._pending_log, []
+            self.log.append_lines(pending)
 
     # ── status ------------------------------------------------------------
 
@@ -2120,6 +2191,12 @@ class MainWindow(QMainWindow):
             self._handle = self.windowHandle()
             if self._handle is not None:
                 self._handle.installEventFilter(self)
+        self._apply_polling_policy()
+        self._refresh_status()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 – Qt convention
+        super().hideEvent(event)
+        self._apply_polling_policy()
 
     def _edges_at(self, pos) -> Qt.Edge:
         edges = Qt.Edge(0)
@@ -2157,6 +2234,11 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange:
+            # Minimising hides the widgets as surely as hide(): pause the
+            # UI-only polling, and resume on restore. macOS has no titlebar
+            # but still minimises, so this runs before the titlebar guard.
+            self._apply_polling_policy()
         if self.titlebar is None:
             return
         if event.type() == QEvent.ActivationChange:
@@ -2186,7 +2268,7 @@ class MainWindow(QMainWindow):
                         QSystemTrayIcon.Information, 5000)
             return
         for t in (self.timer, self.alert_timer, self.autorefresh_timer,
-                  self.route_timer, self.geo_timer):
+                  self.route_timer, self.geo_timer, self.update_check_timer):
             t.stop()
         self.tailer.stop()
         if self._test_cancel is not None:

@@ -94,6 +94,7 @@ class PathView(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.setMinimumWidth(280)
         self.timer = QTimer(self)
+        self.timer.setTimerType(Qt.CoarseTimer)
         self.timer.setInterval(50)
         self.timer.timeout.connect(self._pulse)
         set_help(self, tr('Follow the arrows from you to the Internet; each link shows the delay it adds.'),
@@ -101,6 +102,10 @@ class PathView(QWidget):
         self.setAccessibleName(tr('Ordered path'))
 
     def _pulse(self):
+        # The timer only runs while a chain test is in flight; when the page
+        # is hidden there is nothing to animate, so skip the repaint.
+        if not self.isVisible():
+            return
         self.phase += .18
         self.update()
 
@@ -345,8 +350,9 @@ class ChainCard(QFrame):
         self.tested_time = label(relative_time(report.get('timestamp')), True)
         footer.addWidget(self.tested_time)
         self.time_timer = QTimer(self)
+        self.time_timer.setTimerType(Qt.VeryCoarseTimer)
         self.time_timer.setInterval(60000)
-        self.time_timer.timeout.connect(lambda: self.tested_time.setText(relative_time(report.get('timestamp'))))
+        self.time_timer.timeout.connect(self._refresh_tested_time)
         self.time_timer.start()
         self.expand = QLabel()
         set_help(self.expand, tr('See which outbound carries each hop.'),
@@ -441,6 +447,13 @@ class ChainCard(QFrame):
 
     def _test(self):
         self.cancelRequested.emit() if self.testing else self.testRequested.emit(self.chain.uid)
+
+    def _refresh_tested_time(self):
+        # Minutely refresh of a relative timestamp: skip the repaint while
+        # the text (and so the minute) has not actually changed.
+        text = relative_time(self.report.get('timestamp'))
+        if self.tested_time.text() != text:
+            self.tested_time.setText(text)
 
     def set_testing(self, active, link=1, total=None):
         self.testing = active

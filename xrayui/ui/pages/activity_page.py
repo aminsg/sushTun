@@ -69,8 +69,10 @@ class _DiagnosticsPanel(QWidget):
 
     def set_detail(self, key: str, value: str) -> None:
         label = self._values.get(key)
-        if label is not None:
-            label.setText(ltr(value))
+        # Called from the status tick: an unchanged setText still repaints.
+        new = ltr(value)
+        if label is not None and label.text() != new:
+            label.setText(new)
 
     def set_output(self, text: str) -> None:
         self.output.setPlainText(text)

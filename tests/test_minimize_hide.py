@@ -113,7 +113,12 @@ def test_close_light_hides_to_the_tray(frameless_window, qapp):
         QTest.mouseClick(frameless_window.titlebar.btn_close, Qt.LeftButton)
         qapp.processEvents()
         assert not frameless_window.isVisible()
-        assert frameless_window.timer.isActive()
+        # Closing hid the window but quit nothing: the UI-only status tick
+        # pauses while hidden, so the app staying alive is proven by what
+        # the hidden policy keeps running instead.
+        assert not frameless_window.timer.isActive()
+        assert frameless_window._quitting is False
+        assert frameless_window.tailer.isRunning()
     finally:
         frameless_window.tray = None
 
@@ -182,7 +187,12 @@ def test_close_on_macos_without_a_tray_hides(window, qapp, monkeypatch):
     window.close()
     qapp.processEvents()
     assert not window.isVisible()
-    assert window.timer.isActive()
+    # The red button hid the window, it did not quit the app or stop the
+    # tunnel: the hidden policy pauses the UI-only status tick, so the app
+    # staying alive is proven by what it keeps running instead.
+    assert not window.timer.isActive()
+    assert window._quitting is False
+    assert window.tailer.isRunning()
     window._show_window()
     qapp.processEvents()
     assert window.isVisible()

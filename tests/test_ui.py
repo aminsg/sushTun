@@ -771,7 +771,11 @@ def test_close_hides_to_the_tray_and_keeps_the_tunnel_running(window):
         window.show()
         window.close()
         assert not window.isVisible()
-        assert window.timer.isActive(), "closing the window must not stop the app"
+        # Hiding pauses the UI-only status tick, but the app itself must
+        # stay alive: the log tailer keeps following and the tunnel
+        # supervision (route check) stays armed for reconnects.
+        assert not window.timer.isActive()
+        assert window.tailer.isRunning()
         window.close()
         assert len(window.tray.messages) == 1, "the tray hint should show only once"
     finally:
