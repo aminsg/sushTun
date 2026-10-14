@@ -6,6 +6,8 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 IS_WIN = sys.platform == "win32"
@@ -146,6 +148,22 @@ def _relaunch_linux() -> bool:
     return False
 
 
+# How long the launcher watches the elevated copy before leaving it alone.
+# An elevated start that is going to fail (see _relaunch_macos) fails within
+# the first second or two, while Python is still reading its own files.
+_MAC_START_WATCH = 4.0
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # the elevated copy belongs to root
+    return True
+
+
 def _relaunch_macos() -> bool:
     # Quoted for the shell `do shell script` runs, then escaped for the
     # AppleScript string literal around it: unquoted, a space anywhere in the
@@ -153,23 +171,56 @@ def _relaunch_macos() -> bool:
     # The session arguments too: `do shell script` starts from a bare
     # environment, which loses LANG and, in a source run, --user site-packages.
     inner = " ".join(shlex.quote(a) for a in [*_elevated_cmd(), *_session_args()])
-    literal = inner.replace("\\", "\\\\").replace('"', '\\"')
-    script = f'do shell script "{literal}" with administrator privileges'
-    # Wait, so a cancelled prompt (AppleScript error -128) falls back to an
-    # unelevated window that says why connecting will fail, as on Linux. Any
-    # other failure is the elevated app's own exit, not a reason to reopen.
-    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
-    if "-128" in result.stderr:
-        return False
-    if result.returncode != 0 and "Operation not permitted" in result.stderr:
-        # The root copy could not read its own files: macOS privacy
-        # protection keeps it out of Desktop, Documents and Downloads, even
-        # after the password. It died before opening a window, so without
-        # this nothing appeared at all. Open unelevated and say why.
-        global mac_privacy_blocked
-        mac_privacy_blocked = True
-        return False
-    return True
+    # The elevated app is started in the background and osascript returns as
+    # soon as the password is given. Waiting for it to exit kept osascript
+    # alive for the whole session, and macOS listed that helper as a second
+    # "sushTun" in the Dock and Cmd+Tab. Its output goes to a file only this
+    # user can read, which is how an early failure is still recognised below.
+    fd, errlog = tempfile.mkstemp(prefix="sushtun-elevate-", suffix=".log")
+    os.close(fd)
+    try:
+        shell = f"{inner} >/dev/null 2>{shlex.quote(errlog)} & echo $!"
+        literal = shell.replace("\\", "\\\\").replace('"', '\\"')
+        script = f'do shell script "{literal}" with administrator privileges'
+        result = subprocess.run(["osascript", "-e", script],
+                                capture_output=True, text=True)
+        # A cancelled prompt (AppleScript error -128) falls back to an
+        # unelevated window that says why connecting will fail, as on Linux.
+        if "-128" in result.stderr:
+            return False
+        if result.returncode != 0:
+            # Not given the rights, so nothing was started: better an
+            # unelevated window that explains than no window at all.
+            return False
+        try:
+            pid = int(result.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            return True  # started, but there is nothing to watch
+        deadline = time.monotonic() + _MAC_START_WATCH
+        while _pid_alive(pid):
+            if time.monotonic() >= deadline:
+                return True
+            time.sleep(0.1)
+        # It died before opening a window. Any failure other than the one
+        # below is the elevated app's own exit, not a reason to reopen.
+        try:
+            err = Path(errlog).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            err = ""
+        if "Operation not permitted" in err:
+            # The root copy could not read its own files: macOS privacy
+            # protection keeps it out of Desktop, Documents and Downloads,
+            # even after the password. Without this nothing appeared at all.
+            # Open unelevated and say why.
+            global mac_privacy_blocked
+            mac_privacy_blocked = True
+            return False
+        return True
+    finally:
+        try:
+            os.unlink(errlog)
+        except OSError:
+            pass
 
 
 def _join(args: list[str]) -> str:

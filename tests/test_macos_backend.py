@@ -88,7 +88,9 @@ def test_macos_service_names_with_spaces_survive_the_state_round_trip(monkeypatc
     assert State().dns_state().servers == ["USB 10/100/1000 LAN", "1.1.1.1"]
 
 
-def _mac_relaunch(monkeypatch, tmp_path, *, returncode, stderr=""):
+def _mac_relaunch(monkeypatch, tmp_path, *, returncode, stderr="", stdout="4242\n",
+                  died_with=None):
+    """`died_with`: the elevated app exits at once, leaving that text behind."""
     exe = tmp_path / "My Apps" / 'Xray "Portable"'
     exe.parent.mkdir(exist_ok=True)
     exe.touch()
@@ -99,20 +101,31 @@ def _mac_relaunch(monkeypatch, tmp_path, *, returncode, stderr=""):
 
     def fake_run(args, **_k):
         seen["script"] = args[2]
-        return types.SimpleNamespace(returncode=returncode, stderr=stderr)
+        if died_with is not None:
+            errlog = re.search(r"2>(\S+) & echo", re.sub(r"\\(.)", r"\1", args[2])).group(1)
+            with open(errlog, "w") as f:
+                f.write(died_with)
+        return types.SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
     monkeypatch.setattr(elevate.subprocess, "run", fake_run)
+    monkeypatch.setattr(elevate, "_pid_alive", lambda pid: died_with is None)
+    monkeypatch.setattr(elevate, "_MAC_START_WATCH", 0.2)
     return exe, elevate._relaunch_macos(), seen
+
+
+def _command_of(script):
+    """The elevated command alone, without the background redirections."""
+    literal = re.fullmatch(r'do shell script "(.*)" with administrator privileges',
+                           script).group(1)
+    shell_cmd = re.sub(r"\\(.)", r"\1", literal)  # undo AppleScript escaping
+    return shlex.split(shell_cmd.rsplit(" >/dev/null 2>", 1)[0])
 
 
 def test_macos_relaunch_survives_spaces_and_quotes_in_the_path(monkeypatch, tmp_path):
     exe, started, seen = _mac_relaunch(monkeypatch, tmp_path, returncode=0)
     assert started
 
-    literal = re.fullmatch(r'do shell script "(.*)" with administrator privileges',
-                           seen["script"]).group(1)
-    shell_cmd = re.sub(r"\\(.)", r"\1", literal)  # undo AppleScript escaping
-    argv = shlex.split(shell_cmd)
+    argv = _command_of(seen["script"])
     assert argv[0] == str(exe.resolve())
     assert all(a.startswith("--session-env=") for a in argv[1:])
 
@@ -121,9 +134,7 @@ def test_macos_relaunch_carries_the_session_language(monkeypatch, tmp_path):
     # `do shell script` starts from a bare environment.
     monkeypatch.setenv("LANG", "fa_IR.UTF-8")
     _exe, _started, seen = _mac_relaunch(monkeypatch, tmp_path, returncode=0)
-    literal = re.fullmatch(r'do shell script "(.*)" with administrator privileges',
-                           seen["script"]).group(1)
-    argv = shlex.split(re.sub(r"\\(.)", r"\1", literal))
+    argv = _command_of(seen["script"])
     assert "--session-env=LANG=fa_IR.UTF-8" in argv
 
 
@@ -139,16 +150,16 @@ def test_privacy_protected_folder_falls_back_to_a_window_that_says_why(monkeypat
     # ~/Desktop: the elevated copy died before any window, so nothing appeared.
     monkeypatch.setattr(elevate, "mac_privacy_blocked", False)
     _exe, started, _seen = _mac_relaunch(
-        monkeypatch, tmp_path, returncode=1,
-        stderr="0:402: execution error: PermissionError: [Errno 1] Operation not "
-               "permitted: '/Users/me/Desktop/sushTun/.venv/pyvenv.cfg' (1)")
+        monkeypatch, tmp_path, returncode=0,
+        died_with="PermissionError: [Errno 1] Operation not permitted: "
+                  "'/Users/me/Desktop/sushTun/.venv/pyvenv.cfg'")
     assert started is False
     assert elevate.mac_privacy_blocked is True
 
 
 def test_elevated_app_failing_later_does_not_reopen_a_window(monkeypatch, tmp_path):
-    _exe, started, _seen = _mac_relaunch(monkeypatch, tmp_path, returncode=1,
-                                         stderr="execution error: crashed (1)")
+    _exe, started, _seen = _mac_relaunch(monkeypatch, tmp_path, returncode=0,
+                                         died_with="crashed")
     assert started is True
 
 
