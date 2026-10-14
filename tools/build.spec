@@ -81,6 +81,7 @@ a = Analysis(
     noarchive=False,
 )
 
+# -- bundle-filter-begin (tested by tests/test_build_spec.py) --
 # Qt frameworks the app never loads, though PyInstaller's PySide6 hook
 # collects them. Verified with otool: none of QtCore/QtGui/QtWidgets/
 # QtNetwork/QtSvg (the only Qt modules imported) links any of these.
@@ -89,25 +90,38 @@ _UNUSED_QT_FRAMEWORKS = (
     "QtOpenGL", "QtPdf", "QtQml", "QtQmlMeta", "QtQmlModels",
     "QtQmlWorkerScript", "QtQuick", "QtVirtualKeyboard", "QtVirtualKeyboardQml",
 )
+_UNUSED_QT_FRAMEWORK_DIRS = frozenset(f"{fw}.framework" for fw in _UNUSED_QT_FRAMEWORKS)
 
 
-def _is_unused_qt(dest: str) -> bool:
-    dest = dest.replace("\\", "/")
-    for fw in _UNUSED_QT_FRAMEWORKS:
-        if f"/{fw}.framework/" in dest:
-            return True
-    if "PySide6/Qt/translations/" in dest:
+def _is_unused_qt_entry(dest: str, src: str) -> bool:
+    """True when a collected file belongs to a Qt piece the app never loads.
+
+    Matches every spelling the TOC uses for a removed framework, because each
+    one left behind breaks `codesign` on the .app a different way: files
+    inside `PySide6/Qt/lib/<Name>.framework/…`, the top-level `<Name>`
+    SYMLINK entries the Qt hooks collect (BUNDLE turns those into
+    `Contents/Frameworks/<Name>` and `Contents/Resources/<Name>` links
+    pointing at a framework that is no longer there), and the same two
+    spellings under `Contents/…` should they ever appear. Segments are
+    compared whole, so e.g. `QtQuickWidgets` would never match `QtQuick`.
+    """
+    for path in (dest.replace("\\", "/"), src.replace("\\", "/")):
+        for part in path.split("/"):
+            if part in _UNUSED_QT_FRAMEWORKS or part in _UNUSED_QT_FRAMEWORK_DIRS:
+                return True
+    if "PySide6/Qt/translations/" in dest.replace("\\", "/"):
         # Qt's own .qm files: nothing installs a QTranslator (the app
         # translates with its own dict), so these never load.
         return True
-    if dest.endswith("/plugins/imageformats/libqpdf.dylib"):
+    if dest.replace("\\", "/").endswith("/plugins/imageformats/libqpdf.dylib"):
         # Needs the dropped QtPdf to load at all.
         return True
     return False
+# -- bundle-filter-end --
 
 
-a.binaries = [e for e in a.binaries if not _is_unused_qt(e[0])]
-a.datas = [e for e in a.datas if not _is_unused_qt(e[0])]
+a.binaries = [e for e in a.binaries if not _is_unused_qt_entry(e[0], e[1])]
+a.datas = [e for e in a.datas if not _is_unused_qt_entry(e[0], e[1])]
 
 pyz = PYZ(a.pure)
 
