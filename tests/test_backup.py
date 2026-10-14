@@ -302,3 +302,16 @@ def test_restore_rejects_duplicate_names_exceeding_limit(tmp_path, monkeypatch):
     assert json.loads((base / "settings.json").read_text()) == {"marker": "original"}
 
     assert json.loads((base / "settings.json").read_text()) == {"marker": "original"}
+
+
+def test_restore_rejects_deeply_nested_json_as_corrupt(tmp_path, monkeypatch):
+    base = _setup(tmp_path, monkeypatch)
+    (base / "settings.json").write_text(json.dumps({"marker": "original"}), encoding="utf-8")
+    nested = tmp_path / "nested.zip"
+    with zipfile.ZipFile(nested, "w") as zf:
+        zf.writestr("manifest.json", json.dumps({"app": "sushTun"}))
+        zf.writestr("settings.json", "[" * 10000 + "]" * 10000)
+
+    with pytest.raises(ValueError):
+        backup.restore(nested)
+    assert json.loads((base / "settings.json").read_text()) == {"marker": "original"}
