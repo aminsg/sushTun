@@ -247,7 +247,8 @@ def test_subscription_refresh_and_removal_keep_chain_references(monkeypatch, tmp
         store.save(profile)
     chain = chain_for(items)
     chains.ChainStore().save(chain)
-    sub = subscription.Subscription(profile_uids=[p.uid for p in items])
+    sub = subscription.Subscription(url="https://sub.example/x",
+                                      profile_uids=[p.uid for p in items])
     refreshed = [Profile.from_dict(p.to_dict()) for p in items]
     for n, p in enumerate(refreshed):
         p.uid = f"new-{n}"

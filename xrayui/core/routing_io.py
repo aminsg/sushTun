@@ -74,7 +74,7 @@ def _parse_ruleset_field(raw) -> list:
     if isinstance(raw, str) and raw.strip():
         try:
             data = json.loads(raw)
-        except ValueError:
+        except (ValueError, RecursionError):
             return []
         return data if isinstance(data, list) else []
     return []
@@ -91,7 +91,7 @@ def _set_from_routing_item(item: dict, fetch: Fetch | None) -> tuple[dict, int] 
             return None
         try:
             data = json.loads(fetch(url))
-        except (ValueError, OSError):
+        except (ValueError, OSError, RecursionError):
             return None
     else:
         data = _parse_ruleset_field(ruleset_raw)
@@ -100,6 +100,11 @@ def _set_from_routing_item(item: dict, fetch: Fetch | None) -> tuple[dict, int] 
         return None
 
     rules, skipped = _rules_from_array(data)
+    if not rules:
+        # An empty ruleSet (or one where every rule had an unsupported
+        # outboundTag) is nothing to import, not an empty set the page
+        # would add and announce as imported.
+        return None
     rule_set = {
         "id": uuid.uuid4().hex,
         "name": name,
@@ -119,7 +124,7 @@ def import_rules(text: str, fetch: Fetch | None = None) -> tuple[list[dict], int
     """
     try:
         data = json.loads(text.lstrip("\ufeff"))  # json refuses a BOM outright
-    except ValueError:
+    except (ValueError, RecursionError):
         return [], 0
 
     if isinstance(data, list):
@@ -155,9 +160,17 @@ def import_rules(text: str, fetch: Fetch | None = None) -> tuple[list[dict], int
 
 
 def _default_fetch(url: str, timeout: float = 20.0) -> str:
+    # Same root-process hazard as subscription.fetch (a hand-edited file
+    # could point this at file://), so the same allowlist applies; the
+    # redirect guard comes along for free, since importing subscription
+    # installs the http-only opener urlopen() runs through.
+    subscription._require_http_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (user-provided URL)
-        return resp.read().decode("utf-8", errors="replace")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (checked http(s) above)
+        raw = resp.read(subscription.MAX_BODY_BYTES + 1)
+        if len(raw) > subscription.MAX_BODY_BYTES:
+            raise ValueError("rule set body is too large")
+        return raw.decode("utf-8", errors="replace")
 
 
 def import_url(url: str, fetch: Fetch | None = None) -> tuple[list[dict], int]:

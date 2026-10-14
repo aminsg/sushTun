@@ -39,7 +39,7 @@ from xrayui.core import speedtest as speedtest_mod  # noqa: E402
 from xrayui.core import updates as updates_mod  # noqa: E402
 from xrayui.core.profiles import Profile  # noqa: E402
 from xrayui.core.subscription import Subscription  # noqa: E402
-from xrayui.i18n import ltr  # noqa: E402
+from xrayui.i18n import ltr, tr  # noqa: E402
 from xrayui.ui import dialogs as dialogs_mod  # noqa: E402
 from xrayui.ui.dialogs import (  # noqa: E402
     ImportDialog,
@@ -954,7 +954,7 @@ def test_anti_filter_button_shows_reconnect_when_connected(window, monkeypatch):
     monkeypatch.setattr(window.conn, "is_connected", lambda: True)
     window.btn_fragment.setChecked(True)
     assert not window.btn_reconnect.isHidden()
-    assert "Anti-filter" in window.step_label.text()
+    assert "Anti-filter" in window.status_card._notice_full
 
 
 def test_reconnect_now_hidden_when_disconnected(window):
@@ -968,9 +968,11 @@ def test_reconnect_now_hidden_when_disconnected(window):
 
 def test_reconnect_now_appears_after_a_change_while_connected(window, monkeypatch):
     monkeypatch.setattr(window.conn, "is_connected", lambda: True)
+    window.step_label.setText("")
     window._needs_reconnect("Test change")
     assert not window.btn_reconnect.isHidden()
-    assert window.step_label.text() == "Test change — reconnect to apply."
+    assert window.status_card._notice_full == ltr("Test change — reconnect to apply.")
+    assert window.step_label.text() == ""
 
 
 def test_reconnect_now_disconnects_then_connects_then_hides(window, monkeypatch):
@@ -1272,6 +1274,31 @@ def test_auto_refresh_subs_uses_is_due_and_skips_disabled(window, monkeypatch):
     window._auto_refresh_subs()
 
     assert refreshed == [due.uid]
+
+
+def test_auto_refresh_subs_isolates_a_failing_entry(window, monkeypatch):
+    from xrayui.ui import main_window as main_window_mod
+    refreshed = []
+    monkeypatch.setattr(window, "_refresh_sub", lambda uid: refreshed.append(uid))
+    window.settings["alerts"]["auto_refresh_hours"] = 6
+
+    bad = Subscription(name="Bad", url="https://sub.example/bad", enabled=True, updated=0)
+    good = Subscription(name="Good", url="https://sub.example/good", enabled=True, updated=0)
+    window.subs.save(bad)
+    window.subs.save(good)
+
+    real_is_due = main_window_mod.sub_mod.is_due
+
+    def flaky(sub, global_hours, now):
+        if sub.uid == bad.uid:
+            raise TypeError("boom")
+        return real_is_due(sub, global_hours, now)
+
+    monkeypatch.setattr(main_window_mod.sub_mod, "is_due", flaky)
+
+    window._auto_refresh_subs()  # must not raise, and Good still refreshes
+
+    assert refreshed == [good.uid]
 
 
 # -- --autostart launch behavior (Phase 7a) ----------------------------------
@@ -1838,7 +1865,7 @@ def test_picking_another_server_while_connected_asks_for_a_reconnect(window, mon
     _connected_to(window, monkeypatch, a)
     window._set_active(b.uid)
     assert not window.btn_reconnect.isHidden()
-    assert "Active server changed" in window.step_label.text()
+    assert "Active server changed" in window.status_card._notice_full
 
 
 def test_picking_the_connected_server_again_clears_the_prompt(window, monkeypatch):
@@ -1878,3 +1905,145 @@ def test_a_connection_with_no_recorded_profile_falls_back_to_the_active_one(wind
     a, _b = _two_servers(window)
     monkeypatch.setattr(window.conn, "is_connected", lambda: True)
     assert window._connected_profile().uid == a.uid
+
+
+def test_paste_import_skips_exact_duplicates_and_reports(window):
+    link = ("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+            "?encryption=none&type=tcp&security=none#Dup")
+    QApplication.clipboard().setText(link)
+    window._paste_import()
+    assert len(window.store.list()) == 1
+    QApplication.clipboard().setText(link + "\n" + link)
+    window._paste_import()
+    assert len(window.store.list()) == 1
+    assert "uplicate" in window.step_label.text()
+
+
+def test_paste_import_never_raises_on_hostile_vmess_line(window):
+    import base64 as _b64
+    import json as _json
+    good = ("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+            "?encryption=none&type=tcp&security=none#Good")
+    bad = "vmess://" + _b64.b64encode(_json.dumps(
+        {"ps": "evil", "add": "2.2.2.2", "port": [80], "id": "u"}).encode()).decode()
+    QApplication.clipboard().setText(good + "\n" + bad)
+    window._paste_import()  # must not raise inside the Qt slot
+    assert [p.name for p in window.store.list()] == ["Good"]
+
+
+def test_import_dialog_path_skips_duplicates_and_reports(window, monkeypatch):
+    from xrayui.core import importer as importer_mod
+    from xrayui.ui import main_window as main_window_mod
+
+    dup_link = ("vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443"
+                "?encryption=none&type=tcp&security=none#Dup")
+    new_link = ("vless://22222222-2222-2222-2222-222222222222@5.6.7.8:443"
+                "?encryption=none&type=tcp&security=none#New")
+    window.store.save(importer_mod.parse_share_text(dup_link)[0])
+
+    class _Dlg:
+        subscription_url = ""
+        profiles = importer_mod.parse_share_text(dup_link + "\n" + new_link)
+
+        def exec(self):
+            return True
+
+    monkeypatch.setattr(main_window_mod, "ImportDialog", lambda _parent: _Dlg())
+    window._import()
+    assert sorted(p.name for p in window.store.list()) == ["Dup", "New"]
+    assert "skipped 1 duplicate" in window.step_label.text()
+
+
+# -- fix/ui-state: reconnect notice, tray placeholder, failure text --------
+
+def test_disconnect_clears_the_whole_reconnect_notice(window, monkeypatch):
+    # T3-02 (repro: qa_tester3/test_conn_activity.py): ending the connection
+    # must clear the notice text too, not just its button.
+    a, _b = _two_servers(window)
+    _connected_to(window, monkeypatch, a)
+    window._needs_reconnect("Routing changed")
+    assert not window.btn_reconnect.isHidden()
+    monkeypatch.setattr(window.conn, "is_connected", lambda: False)
+    window._on_conn_done()
+    assert window.btn_reconnect.isHidden()
+    assert window.status_card._notice_label.isHidden()
+    assert window.status_card._notice_label.text() == ""
+
+
+def test_refresh_status_hides_the_reconnect_notice_when_disconnected(window, monkeypatch):
+    # T3-02: the periodic refresh must not leave a stale "reconnect" notice
+    # behind once there is nothing to reconnect.
+    a, _b = _two_servers(window)
+    _connected_to(window, monkeypatch, a)
+    window._needs_reconnect("Routing changed")
+    assert not window.btn_reconnect.isHidden()
+    monkeypatch.setattr(window.conn, "is_connected", lambda: False)
+    monkeypatch.setattr(window, "isVisible", lambda: True)
+    monkeypatch.setattr(window, "isMinimized", lambda: False)
+    window._refresh_status()
+    assert window.btn_reconnect.isHidden()
+    assert window.status_card._notice_label.isHidden()
+
+
+def test_needs_reconnect_shows_the_notice_only_in_the_status_card(window, monkeypatch):
+    # T2-UX1 / T3-08.1: one prompt, in the card with its button — the step
+    # line under the toolbar must not repeat the same sentence.
+    a, _b = _two_servers(window)
+    _connected_to(window, monkeypatch, a)
+    window.step_label.setText("previous step")
+    window._needs_reconnect("Routing changed")
+    assert not window.btn_reconnect.isHidden()
+    assert window.status_card._notice_full == ltr("Routing changed — reconnect to apply.")
+    assert window.step_label.text() == "previous step"
+
+
+def test_needs_reconnect_is_silent_while_disconnected(window):
+    # T2-UX1 / T3-08.1: with no connection there is nothing to reconnect,
+    # so no prompt anywhere — not even in the step line.
+    assert not window.conn.is_connected()
+    window.step_label.setText("")
+    window._needs_reconnect("Routing changed")
+    assert window.btn_reconnect.isHidden()
+    assert window.step_label.text() == ""
+
+
+def test_tray_servers_submenu_shows_a_no_servers_placeholder(window):
+    # T2-UX2: an empty store must not render an empty blank popup.
+    from PySide6.QtWidgets import QMenu
+    window.servers_menu = QMenu()
+    assert window.store.list() == []
+    window._rebuild_servers_tray_menu()
+    actions = window.servers_menu.actions()
+    assert [a.text() for a in actions] == [tr("No servers")]
+    assert not actions[0].isEnabled()
+
+
+def test_conn_failure_step_label_has_translated_prefix_and_ltr_detail(window, warnings):
+    # T3-07: raw English exception text must not leak bare into the fa UI;
+    # the step line gets a translated prefix and an LTR-isolated detail.
+    window._on_conn_done(error="profile is missing address or id")
+    assert window.step_label.text() == tr(
+        "Connection failed: {error}",
+        error=ltr("profile is missing address or id"))
+    assert warnings == ["profile is missing address or id"]
+
+
+def test_refresh_status_shows_the_tunnel_device_with_its_index(window, monkeypatch):
+    # T3-06: the Diagnostics "Tunnel device" row names the device and, where
+    # the platform keeps one, its index alongside.
+    from xrayui.ui.main_window import _tunnel_device_name
+    a, _b = _two_servers(window)
+    _connected_to(window, monkeypatch, a)  # state.save(..., tun_index=7, ...)
+    monkeypatch.setattr(window, "isVisible", lambda: True)
+    monkeypatch.setattr(window, "isMinimized", lambda: False)
+    window._refresh_status()
+    assert window.activity_page.diagnostics._values["tun"].text() == ltr(
+        f"{_tunnel_device_name()} (ifIndex 7)")
+
+
+def test_refresh_status_clears_the_tunnel_device_when_disconnected(window, monkeypatch):
+    assert not window.conn.is_connected()
+    monkeypatch.setattr(window, "isVisible", lambda: True)
+    monkeypatch.setattr(window, "isMinimized", lambda: False)
+    window._refresh_status()
+    assert window.activity_page.diagnostics._values["tun"].text() == ltr("—")

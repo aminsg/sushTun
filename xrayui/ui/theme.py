@@ -241,9 +241,9 @@ QPushButton#HeaderAction:disabled {{ background: #28282b; color: #5c5c61; border
 QToolButton#PopupButton {{
     background: transparent; border: none; padding: 0; margin: 0;
 }}
-/* The header card's inner container must not repaint the global BG: #1e1e20
+/* The header card's inner containers must not repaint the global BG: #1e1e20
    over the card's SURFACE (#2a2a2d). */
-QFrame#Card QWidget#HeaderStats {{ background: transparent; }}
+QFrame#Card QWidget#HeaderStats, QFrame#Card QWidget#HeaderLead {{ background: transparent; }}
 
 QMenu {{
     background: #2c2c2e; border: 1px solid #45454a; border-radius: 8px; padding: 5px;

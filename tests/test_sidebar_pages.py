@@ -356,6 +356,24 @@ def test_sidebar_list_amount_is_ltr_isolated(qapp):
 
 
 # -- ActivityPage ----------------------------------------------------------
+def test_activity_diagnostics_run_button_says_run_diagnostics(qapp):
+    # T3-06: the tab is titled "Diagnostics" and Tools has its own
+    # "Diagnostics" button, so the tab's run button needs the verb.
+    page = ActivityPage()
+    assert page.tabs.tabText(2) == tr("Diagnostics")
+    run = page.diagnostics.findChild(QPushButton)
+    assert run.text() == tr("Run diagnostics")
+
+
+def test_activity_diagnostics_tunnel_row_is_named_tunnel_device(qapp):
+    # T3-06: "Tunnel ifIndex" is raw developer jargon; the row names the
+    # device instead.
+    page = ActivityPage()
+    labels = [w.text() for w in page.diagnostics.findChildren(QLabel)]
+    assert tr("Tunnel device") in labels
+    assert tr("Tunnel ifIndex") not in labels
+
+
 def test_activity_page_tabs_switch_the_stack(qapp):
     page = ActivityPage()
     assert page.tabs.count() == 3
@@ -394,7 +412,7 @@ def test_activity_page_diagnostics_panel_and_both_run_buttons(qapp):
     assert page.diagnostics.output.toPlainText() == "line 1"
     assert page.diagnostics._values["tun"].text() == ltr("utun3")
     run = page.diagnostics.findChild(QPushButton)
-    assert run.text() == tr("Diagnostics")
+    assert run.text() == tr("Run diagnostics")
     run.click()
     assert fired == ["run", "run"]
 

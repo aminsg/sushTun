@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import urllib.parse
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThreadPool
@@ -1395,6 +1396,11 @@ class SubscriptionEditDialog(QDialog):
         url = self.f_url.text().strip()
         if not url:
             QMessageBox.warning(self, tr("Missing URL"), tr("Subscription URL is required."))
+            return
+        parts = urllib.parse.urlsplit(url)
+        if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+            QMessageBox.warning(self, tr("Invalid subscription URL"),
+                                tr("Subscription URL must start with http:// or https://."))
             return
         name_filter = self.f_name_filter.text().strip()
         if name_filter:

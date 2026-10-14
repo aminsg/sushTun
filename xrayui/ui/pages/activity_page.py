@@ -20,14 +20,6 @@ from ..mac import InsetGroup
 from ..tools_panel import ToolsPanel
 from ..widgets import LogView
 
-_DIAGNOSTIC_ROWS = (
-    (tr("Xray process"), "process"),
-    (tr("Interface"), "iface"),
-    (tr("Source IPv4"), "ip"),
-    (tr("Gateway"), "gateway"),
-    (tr("Tunnel ifIndex"), "tun"),
-)
-
 
 class _DiagnosticsPanel(QWidget):
     """The four-inset diagnostics readout: current xray process/interface
@@ -43,14 +35,22 @@ class _DiagnosticsPanel(QWidget):
 
         self._values: dict[str, QLabel] = {}
         group = InsetGroup()
-        for label, key in _DIAGNOSTIC_ROWS:
+        # Labels translated here, not at module level: tr() bakes the language
+        # at call time, but this module is imported before run() sets fa.
+        for label, key in (
+            (tr("Xray process"), "process"),
+            (tr("Interface"), "iface"),
+            (tr("Source IPv4"), "ip"),
+            (tr("Gateway"), "gateway"),
+            (tr("Tunnel device"), "tun"),
+        ):
             value = QLabel("—")
             value.setObjectName("Mono")
             group.add_row(label, value)
             self._values[key] = value
         outer.addWidget(group)
 
-        run = QPushButton(tr("Diagnostics"))
+        run = QPushButton(tr("Run diagnostics"))
         run.clicked.connect(self.runRequested)
         set_help(run,
                  tr("Collects the network details the tunnel relies on: server ping, "

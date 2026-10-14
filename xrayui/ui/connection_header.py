@@ -120,7 +120,10 @@ class ConnectionHeader(QFrame):
         self._flag.setVisible(False)
         # A container so the help sits on the whole line while the label's own
         # tooltip stays free for the full text when the line is cut short.
+        # Named so the theme keeps it transparent like the stats box: an
+        # unnamed QWidget repaints the window BG inside the card.
         self._lead_box = QWidget(self)
+        self._lead_box.setObjectName("HeaderLead")
         lead = QHBoxLayout(self._lead_box)
         lead.setContentsMargins(0, 0, 0, 0)
         lead.setSpacing(8)

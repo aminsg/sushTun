@@ -115,6 +115,29 @@ def _help_routing_action(action: QAction, value: str) -> None:
                  tr("Pick your movie-night set, then switch back when the credits roll."))
 
 
+def _tunnel_device_name() -> str:
+    """The tunnel device's fixed per-platform name: tun2socks' utun device
+    on macOS, xray0 everywhere else. Its ifIndex only exists while connected."""
+    if sys.platform == "darwin":
+        from ..core.tun2socks import DEVICE
+        return DEVICE
+    return network.TUN_NAME
+
+
+def _tunnel_device_label(conn) -> str:
+    """The Diagnostics "Tunnel device" value for this connection: the device
+    name, with its index alongside when the platform keeps one
+    (Linux/Windows). macOS stores no numeric index, so a live tunnel there
+    shows the name alone. Kept at module level so bare test doubles driving
+    _refresh_status don't need the whole window."""
+    index = conn.state.tun_index
+    if index:
+        return f"{_tunnel_device_name()} (ifIndex {index})"
+    if conn.is_connected():
+        return _tunnel_device_name()
+    return "—"
+
+
 # ── toolbar ──────────────────────────────────────────────────────────────
 
 class _Toolbar(QWidget):
@@ -240,6 +263,29 @@ class _Toolbar(QWidget):
 
 # ── main window ──────────────────────────────────────────────────────────
 
+def _import_key(p: Profile) -> tuple:
+    """Identity for import duplicate detection: same protocol, address, port
+    and credential -- the same key _remove_duplicates uses for the stored
+    list, so "already imported" means exactly what that cleanup would delete."""
+    return ((p.protocol or "").lower(), p.address, p.port, p.id)
+
+
+def _drop_duplicates(
+    profiles: list[Profile], existing: list[Profile],
+) -> tuple[list[Profile], int]:
+    """Split `profiles` into (fresh, skipped_count), dropping exact duplicates
+    both within the import itself and against the already-stored `existing`."""
+    seen = {_import_key(p) for p in existing}
+    fresh: list[Profile] = []
+    for p in profiles:
+        key = _import_key(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        fresh.append(p)
+    return fresh, len(profiles) - len(fresh)
+
+
 class MainWindow(QMainWindow):
     stepReceived = Signal(str)
     testResultReceived = Signal(str, object, object)
@@ -299,7 +345,6 @@ class MainWindow(QMainWindow):
         self._test_cancel: threading.Event | None = None
         self._geo_updating = False
         self._subtitle_pix = None
-        self._tray_tip: str | None = None
 
         self.stepReceived.connect(self._on_step)
         self.testResultReceived.connect(self._on_test_result)
@@ -398,7 +443,6 @@ class MainWindow(QMainWindow):
                 self._on_step(tr("Auto-connect failed: {error}", error=error))
                 return
             self.btn_reconnect.setVisible(False)
-            self._refresh_tray_state()
             self._refresh_status()
             self._detect_exit_after_connect()
 
@@ -634,16 +678,17 @@ class MainWindow(QMainWindow):
     # ── tray ──────────────────────────────────────────────────────────────
 
     def _build_tray(self) -> None:
+        from . import tray_icon as tray_mod
         from .icon import app_icon as _app_icon
-        _icon = _app_icon()
-        self.setWindowIcon(_icon)
+        self.setWindowIcon(_app_icon())
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self.tray = None
             self.routing_menu = None
             self.servers_menu = None
             return
-        self.tray = QSystemTrayIcon(_icon, self)
-        self.tray.setToolTip("sushTun")
+        self.tray = QSystemTrayIcon(
+            tray_mod.tray_icon("disconnected", None, tray_mod.system_is_dark()), self)
+        self.tray.setToolTip(tray_mod.tray_tooltip("disconnected"))
         menu = QMenu()
         menu.addAction(tr("Show"), self._show_window)
         menu.addAction(tr("Connect"), self._connect)
@@ -659,30 +704,67 @@ class MainWindow(QMainWindow):
             if reason == QSystemTrayIcon.Trigger else None)
         self.tray.show()
         QApplication.instance().setQuitOnLastWindowClosed(False)
-        self._refresh_tray_state()
 
-    def _refresh_tray_state(self) -> None:
-        """Bring the tray tooltip in line with the connection state.
-
-        Called from every connection-state change (connect, disconnect,
-        failure, server switch, reconnect, exit detection) instead of the
-        status tick, so the tray stays correct while the window is hidden
-        and its tick is stopped. Only the tooltip text is owned here; the
-        icon artwork belongs to feat/tray-flag, which hooks the same
-        connection-state changes.
-        """
-        if self.tray is None:
-            return
+    def _tray_state(self) -> str:
+        # Connecting is the busy window between asking and knowing: busy and
+        # not (or no longer) connected. A busy disconnect keeps showing the
+        # connected flag until it lands, then flips via _on_conn_done.
         if self.conn.is_connected():
+            return "connected"
+        return "connecting" if self._busy else "disconnected"
+
+    def _tray_country(self) -> str | None:
+        # Same source as the header's flag, without touching any widget, so
+        # this stays cheap enough to run while the window is hidden.
+        try:
+            if not self.conn.is_connected():
+                return None
+            uid = self.conn.state.chain_uid
+            if uid:
+                detected = getattr(self, "_chain_exit", None)
+                if detected and detected[0] == uid:
+                    return geo_exit.normalize(detected[1].country)
+                report = self.chain_results.get(uid) or {}
+                return geo_exit.normalize(report.get("country"))
             profile = self._connected_profile()
-            tip = f"sushTun — {tr('Connected')}"
-            if profile is not None:
-                tip += f" · {profile.name}"
-        else:
-            tip = "sushTun"
-        if tip != self._tray_tip:
-            self._tray_tip = tip
-            self.tray.setToolTip(tip)
+            if profile is None:
+                return None
+            return self.profiles.model.country_of(profile.uid)
+        except Exception:
+            return None
+
+    def _tray_server_name(self) -> str:
+        try:
+            if not self.conn.is_connected():
+                return ""
+            if self.conn.state.chain_uid:
+                plan = self._connected_chain
+                if plan is None or plan.uid != self.conn.state.chain_uid:
+                    saved = self.chain_store.get(self.conn.state.chain_uid)
+                    try:
+                        plan = chains.resolve(saved, self.store.list()) if saved else None
+                    except ValueError:
+                        plan = None
+                return plan.name if plan else ""
+            profile = self._connected_profile()
+            return profile.name if profile else ""
+        except Exception:
+            return ""
+
+    def _refresh_tray(self) -> None:
+        # Always runs, even with the window hidden or minimised: cached icons
+        # only, no I/O, no timers. Called from the existing state callbacks.
+        if getattr(self, "tray", None) is None:
+            return
+        from . import tray_icon as tray_mod
+        try:
+            state = self._tray_state()
+            country = self._tray_country()
+            name = self._tray_server_name()
+            self.tray.setIcon(tray_mod.tray_icon(state, country, tray_mod.system_is_dark()))
+            self.tray.setToolTip(tray_mod.tray_tooltip(state, name, country))
+        except Exception:
+            pass
 
     def _build_mac_menu(self) -> None:
         """The macOS menu bar, with Quit and Settings in the app menu.
@@ -814,13 +896,24 @@ class MainWindow(QMainWindow):
         if dlg.subscription_url:
             self._keep_as_subscription(dlg.subscription_url)
             return
+        fresh, skipped = _drop_duplicates(dlg.profiles, self.store.list())
+        if not fresh:
+            if skipped:
+                self.step_label.setText(
+                    tr("Skipped {n} duplicate server(s) — already in the list.",
+                       n=skipped))
+            return
         first = None
-        for p in dlg.profiles:
+        for p in fresh:
             self.store.save(p)
             first = first or p
         if first and not self.store.active_uid():
             self.store.set_active(first.uid)
         self._reload_profiles()
+        if skipped:
+            self.step_label.setText(
+                tr("Imported {n} server(s), skipped {skipped} duplicate(s).",
+                   n=len(fresh), skipped=skipped))
 
     def _edit(self, uid: str) -> None:
         profile = self.store.get(uid)
@@ -864,7 +957,6 @@ class MainWindow(QMainWindow):
         self.store.set_active(uid)
         self.profiles.set_active(uid)
         self._rebuild_servers_tray_menu()
-        self._refresh_tray_state()
         # A click in the server table lands here too, and used to change the
         # active server in silence: the tunnel kept carrying the old one while
         # the status card already showed the new one's address. Only a server
@@ -888,18 +980,35 @@ class MainWindow(QMainWindow):
         if url:
             self._keep_as_subscription(url)
             return
-        profiles = importer.parse_share_text(text)
-        if not profiles:
-            self.step_label.setText(
-                tr("Clipboard has no importable server link."))
+        try:
+            profiles = importer.parse_share_text(text)
+        except Exception:
+            # A hostile clipboard line must never raise out of this Qt slot
+            # (a paste would silently die with a traceback); report it the
+            # same way as any other unimportable content.
+            profiles = []
+        fresh, skipped = _drop_duplicates(profiles, self.store.list())
+        if not fresh:
+            if skipped:
+                self.step_label.setText(
+                    tr("Skipped {n} duplicate server(s) — already in the list.",
+                       n=skipped))
+            else:
+                self.step_label.setText(
+                    tr("Clipboard has no importable server link."))
             return
-        for p in profiles:
+        for p in fresh:
             self.store.save(p)
         if not self.store.active_uid():
-            self.store.set_active(profiles[0].uid)
+            self.store.set_active(fresh[0].uid)
         self._reload_profiles()
-        self.step_label.setText(
-            tr("Imported {n} server(s).", n=len(profiles)))
+        if skipped:
+            self.step_label.setText(
+                tr("Imported {n} server(s), skipped {skipped} duplicate(s).",
+                   n=len(fresh), skipped=skipped))
+        else:
+            self.step_label.setText(
+                tr("Imported {n} server(s).", n=len(fresh)))
 
     # ── speed test --------------------------------------------------------
 
@@ -959,6 +1068,7 @@ class MainWindow(QMainWindow):
         if "country" in fields:
             self._refresh_status_subtitle()
             self._show_exit_of_connected()
+            self._refresh_tray()
 
     def _detect_exit_after_connect(self) -> None:
         chain_uid = self.conn.state.chain_uid
@@ -974,8 +1084,8 @@ class MainWindow(QMainWindow):
                 if chain_uid:
                     if self.conn.is_connected() and self.conn.state.chain_uid == chain_uid:
                         self._chain_exit = (chain_uid, result)
-                        self._refresh_tray_state()
                         self._show_exit_of_connected()
+                        self._refresh_tray()
                 else:
                     self.exitDetected.emit(uid, result)
 
@@ -985,9 +1095,9 @@ class MainWindow(QMainWindow):
         fields = {"country": info.country, "exit_ip": info.ip}
         self.results.set(uid, **fields)
         self.profiles.update_detail(uid, fields)
-        self._refresh_tray_state()
         self._refresh_status_subtitle()
         self._show_exit_of_connected()
+        self._refresh_tray()
 
     def _show_exit_of_connected(self) -> None:
         uid = self.conn.state.chain_uid if self.conn.is_connected() else ''
@@ -1170,8 +1280,13 @@ class MainWindow(QMainWindow):
             .get("auto_refresh_hours", 6)
         now = time.time()
         for sub in self.subs.list():
-            if sub_mod.is_due(sub, global_hours, now):
-                self._refresh_sub(sub.uid)
+            try:
+                if sub_mod.is_due(sub, global_hours, now):
+                    self._refresh_sub(sub.uid)
+            except Exception:
+                # One hostile stored entry (e.g. restored from a backup)
+                # must never stop the others from refreshing on this tick.
+                continue
 
     # ── alerts / updates --------------------------------------------------
 
@@ -1388,12 +1503,18 @@ class MainWindow(QMainWindow):
     def _on_conn_done(self, result=None, error: str | None = None) -> None:
         self._set_busy(False)
         if error:
-            self.step_label.setText(error)
+            # The detail is a raw core exception string: keep it verbatim but
+            # give it a translated prefix and an LTR isolate, so it doesn't
+            # leak bare English into the fa UI or break its RTL flow.
+            self.step_label.setText(
+                tr("Connection failed: {error}", error=ltr(error)))
             QMessageBox.warning(self, tr("Connection"), error)
-        self.btn_reconnect.setVisible(False)
-        self._refresh_tray_state()
+        # The connection ended either way: nothing left to reconnect, so the
+        # whole notice goes, not just its button.
+        self.status_card.hide_reconnect()
         # A connect/disconnect that lands while hidden flips what the
-        # polling policy must supervise (route check) — re-arm it.
+        # polling policy must supervise (route check) — re-arm it. The tray
+        # already moved via _set_busy()/_refresh_status() above and below.
         self._apply_polling_policy()
         self._refresh_status()
         self._reload_chains()
@@ -1532,6 +1653,12 @@ class MainWindow(QMainWindow):
     # ── status ------------------------------------------------------------
 
     def _refresh_status(self) -> None:
+        # The tray keeps updating while hidden or minimised (cached icons
+        # only); everything below it is on-screen state and stays skipped.
+        # Looked up defensively: headless namespace stubs call this unbound.
+        refresh_tray = getattr(self, "_refresh_tray", None)
+        if callable(refresh_tray):
+            refresh_tray()
         visible = self.isVisible() and not self.isMinimized()
         # Hidden in the tray there is nothing on screen to update: skip the
         # background process checks and traffic sampling, which kept a
@@ -1541,6 +1668,10 @@ class MainWindow(QMainWindow):
         if not visible:
             return
         connected = self.conn.is_connected()
+        if not connected:
+            # A disconnect (or failed connect) leaves nothing to reconnect:
+            # clear any stale notice rather than stranding its text.
+            self.status_card.hide_reconnect()
         self.status_card.set_connected(connected)
         # Connected, this is the server carrying traffic -- not whichever row
         # happens to be selected.
@@ -1580,6 +1711,15 @@ class MainWindow(QMainWindow):
         self.status_card.set("gateway", st.gateway or "—")
         self.status_card.set("tun",
                              str(st.tun_index) if st.tun_index else "—")
+        # The Diagnostics tab mirrors the same readout. Its Tunnel row names
+        # the device, with the index alongside where the platform keeps one.
+        diag = self.activity_page.diagnostics
+        diag.set_detail("process", tr("RUNNING")
+                        if running or self._orphan_running else tr("STOPPED"))
+        diag.set_detail("iface", st.alias or "—")
+        diag.set_detail("ip", st.ipv4 or "—")
+        diag.set_detail("gateway", st.gateway or "—")
+        diag.set_detail("tun", _tunnel_device_label(self.conn))
         self.btn_connect.setEnabled(not connected and not self._busy)
         self.btn_disconnect.setEnabled(connected and not self._busy)
         self._refresh_status_subtitle()
@@ -1653,10 +1793,13 @@ class MainWindow(QMainWindow):
     # ── settings / routing ------------------------------------------------
 
     def _needs_reconnect(self, what: str) -> None:
-        self.step_label.setText(
+        # One prompt, in the status card with its button: repeating the same
+        # sentence in the step line doubled it on screen. Disconnected there
+        # is nothing to reconnect, so this stays silent.
+        if not self.conn.is_connected():
+            return
+        self.status_card.show_reconnect(
             tr("{what} — reconnect to apply.", what=what))
-        if self.conn.is_connected():
-            self.status_card.show_reconnect(self.step_label.text())
 
     def _reconnect_now(self) -> None:
         if self._busy:
@@ -1896,6 +2039,11 @@ class MainWindow(QMainWindow):
             group.addAction(action)
 
         saved_chains = self.chain_store.list()
+        if not self.servers_menu.actions() and not saved_chains:
+            # An empty submenu renders as a blank sliver; say so instead.
+            empty = self.servers_menu.addAction(tr("No servers"))
+            empty.setEnabled(False)
+            return
         if saved_chains:
             self.servers_menu.addSeparator()
             submenu = self.servers_menu.addMenu(tr("Chains"))
@@ -2032,6 +2180,8 @@ class MainWindow(QMainWindow):
         self.btn_disconnect.setEnabled(not busy)
         if self.status_card.btn_more is not None:
             self.status_card.btn_more.setEnabled(not busy)
+        # Entering/leaving the connecting state while disconnected.
+        self._refresh_tray()
 
     # ── frameless window chrome -------------------------------------------
 
