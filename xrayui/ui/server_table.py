@@ -41,6 +41,11 @@ def _transport_text(p: Profile) -> str:
         return "socks"
     if proto == "http":
         return "http/tls" if p.security == "tls" else "http"
+    if proto == "hysteria2":
+        # Hysteria2 runs over QUIC/UDP and has no tcp/ws-style network field:
+        # the Profile default ("tcp/none") would claim a transport it never
+        # uses. Display-only; the config builder and share links never read this.
+        return "hy2"
     return f"{p.network}/{p.security}"
 
 

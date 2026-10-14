@@ -340,3 +340,11 @@ def test_server_table_shows_what_to_do_when_empty(qapp):
     qapp.processEvents()
     assert not panel.empty_hint.isHidden()
     assert panel.empty_hint.text() == tr("No servers match the filter.")
+
+
+def test_hysteria2_transport_does_not_claim_tcp(qapp):
+    from xrayui.core import importer as importer_mod
+    from xrayui.ui.server_table import _transport_text
+
+    p = importer_mod.parse_hysteria2("hysteria2://pw@h.example.com:443?sni=h.example.com#HY")
+    assert _transport_text(p) == "hy2"

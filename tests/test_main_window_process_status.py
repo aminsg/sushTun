@@ -15,6 +15,8 @@ def window():
         _connected_chain=None, btn_connect=Mock(), btn_disconnect=Mock(), _busy=False,
         _refresh_status_subtitle=lambda: None, _orphan_running=False,
         _orphan_check_pending=False, _orphan_check_at=float('-inf'),
+        # _refresh_status also mirrors the readout into the Diagnostics tab.
+        activity_page=SimpleNamespace(diagnostics=Mock()),
     )
     w.conn.xray.is_running.return_value = False
     w.jobs = []

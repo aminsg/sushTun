@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import proc
@@ -141,9 +143,23 @@ def backup_dns(alias: str) -> DnsState:
         return DnsState(mode="FILE", servers=[])
 
 
+def _run_best_effort(cmd: list[str]) -> None:
+    """A teardown delete that must never stall disconnect.
+
+    Route deletes are best-effort by design (deleting a route whose device is
+    already gone fails, and that is fine). A hung helper used to stall the
+    whole disconnect with no bound; now it gives up after a generous timeout
+    instead. Anything else still raises as before.
+    """
+    try:
+        proc.run(cmd, timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def _mac_flush_dns() -> None:
-    proc.run(["dscacheutil", "-flushcache"])
-    proc.run(["killall", "-HUP", "mDNSResponder"])
+    _run_best_effort(["dscacheutil", "-flushcache"])
+    _run_best_effort(["killall", "-HUP", "mDNSResponder"])
 
 
 def _resolved_active() -> bool:
@@ -238,7 +254,13 @@ def restore_dns(alias: str, state: DnsState, retries: int = 1) -> bool:
         if not service:
             return False
         for attempt in range(max(1, retries)):
-            if proc.run(["networksetup", "-setdnsservers", service, *rest]).returncode == 0:
+            try:
+                ok = proc.run(
+                    ["networksetup", "-setdnsservers", service, *rest],
+                    timeout=10).returncode == 0
+            except subprocess.TimeoutExpired:
+                ok = False
+            if ok:
                 _mac_flush_dns()
                 return True
             if attempt + 1 < retries:
@@ -289,21 +311,39 @@ def stranded_loopback_adapters(exclude: str | None = None) -> list[str]:
 
 def release_stranded_dns(exclude: str | None = None) -> list[str]:
     if IS_MAC:
-        reset = []
+        try:
+            listing = proc.run(
+                ["networksetup", "-listnetworkserviceorder"], timeout=10).stdout.splitlines()
+        except subprocess.TimeoutExpired:
+            return []
+        pairs = []
         service = None
-        for line in proc.run(["networksetup", "-listnetworkserviceorder"]).stdout.splitlines():
+        for line in listing:
             line = line.strip()
             if line.startswith("(") and ")" in line and "Hardware Port" not in line:
                 service = line.split(")", 1)[1].strip()
             elif service and "Device: " in line:
                 alias = line.split("Device: ", 1)[1].rstrip(")")
-                if alias == exclude:
-                    continue
-                current = proc.run(["networksetup", "-getdnsservers", service])
-                if current.returncode == 0 and current.stdout.split() == ["127.0.0.1"]:
-                    if proc.run(["networksetup", "-setdnsservers", service,
-                                 "empty"]).returncode == 0:
-                        reset.append(alias)
+                if alias != exclude:
+                    pairs.append((service, alias))
+
+        def check(pair: tuple[str, str]) -> str | None:
+            # One service's probe, independent of the others: a service that
+            # was never hijacked still costs a `networksetup` round trip, so
+            # these run side by side instead of one by one.
+            service, alias = pair
+            try:
+                current = proc.run(["networksetup", "-getdnsservers", service], timeout=10)
+                if current.returncode != 0 or current.stdout.split() != ["127.0.0.1"]:
+                    return None
+                ok = proc.run(["networksetup", "-setdnsservers", service, "empty"],
+                              timeout=10).returncode == 0
+            except (subprocess.TimeoutExpired, OSError):
+                return None
+            return alias if ok else None
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            reset = sorted(a for a in pool.map(check, pairs) if a is not None)
         if reset:
             _mac_flush_dns()
         return reset
@@ -461,18 +501,26 @@ def repair_tun_routes() -> bool | None:
 
 
 def remove_routes(server_ip: str | None = None) -> None:
+    # Every delete is independent and best-effort, so they all run side by
+    # side: on macOS this used to be thirteen sequential `route` calls, which
+    # is where the Disconnect button's seconds went. Both variants per
+    # destination stay: an older build (or the other tunnel mode) may have
+    # left the one this session never added.
+    cmds = []
     if IS_MAC:
         for dest in (*MAC_SPLIT, *_MAC_OLD_SPLIT):
             for native in (True, False):
-                proc.run(["route", "-n", "delete", "-net", dest, *_mac_via(native)])
+                cmds.append(["route", "-n", "delete", "-net", dest, *_mac_via(native)])
         if server_ip:
-            proc.run(["route", "-n", "delete", "-host", server_ip])
+            cmds.append(["route", "-n", "delete", "-host", server_ip])
     else:
-        proc.run(["ip", "route", "del", "default", "dev", TUN_NAME])
+        cmds.append(["ip", "route", "del", "default", "dev", TUN_NAME])
         for dest in ("0.0.0.0/1", "128.0.0.0/1"):
-            proc.run(["ip", "route", "del", dest, "dev", TUN_NAME])
+            cmds.append(["ip", "route", "del", dest, "dev", TUN_NAME])
         if server_ip:
-            proc.run(["ip", "route", "del", server_ip])
+            cmds.append(["ip", "route", "del", server_ip])
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        list(pool.map(_run_best_effort, cmds))
 
 
 def wait_for_tun(name: str = TUN_NAME, timeout: float = 30.0,

@@ -2,13 +2,13 @@
 
 Only the `proxy` outbound is rewritten; every other part of
 config.template.json (inbounds, dns-out/direct/block, routing) is preserved
-verbatim, and the __IFACE__ / __INTERFACE__ placeholders are substituted last.
+verbatim, and the __IFACE__ / __INTERFACE__ placeholders are substituted only
+in the template/code-owned sockopt.interface bindings, never in profile data.
 """
 from __future__ import annotations
 
 import ipaddress
 import json
-import re
 from pathlib import Path
 
 from .. import paths
@@ -20,6 +20,28 @@ from . import routing as routing_mod
 from . import settings as app_settings
 from .metrics import STATS_API_PORT
 from .profiles import Profile
+
+
+def _apply_iface_alias(cfg: dict, iface_alias: str) -> None:
+    # The placeholders live only in sockopt.interface bindings (the
+    # template's three, plus the proxy outbound the builders create with the
+    # same placeholder). Substituting anywhere else rewrites profile data: a
+    # subscription-supplied ws path, SNI or host containing __IFACE__ would
+    # silently become the local interface alias.
+    def visit(node) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "interface" and isinstance(value, str):
+                    if "__INTERFACE__" in value or "__IFACE__" in value:
+                        node[key] = value.replace("__INTERFACE__", iface_alias).replace(
+                            "__IFACE__", iface_alias)
+                else:
+                    visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(cfg)
 
 
 def _apply_dns_routing(cfg: dict, dns_rules: list[dict]) -> None:
@@ -188,9 +210,8 @@ def build_text(
             entry["streamSettings"]["sockopt"]["domainStrategy"] = "ForceIPv4"
     if tun_mtu:
         _apply_mtu(cfg, tun_mtu)
-    text = json.dumps(cfg, indent=2, ensure_ascii=False)
-    escaped_alias = json.dumps(iface_alias, ensure_ascii=False)[1:-1]
-    return re.sub(r"__INTERFACE__|__IFACE__", lambda _match: escaped_alias, text)
+    _apply_iface_alias(cfg, iface_alias)
+    return json.dumps(cfg, indent=2, ensure_ascii=False)
 
 
 def build(

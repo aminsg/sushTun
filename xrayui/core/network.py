@@ -1,9 +1,11 @@
 """Windows network orchestration: interface detection, DNS, routes, TUN."""
 from __future__ import annotations
 
+import subprocess
 import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 
 from . import proc
 from ._net_common import TUN_ADDRESS, TUN_NAME, TUN_NETMASK, DnsState, Interface
@@ -102,6 +104,15 @@ def restore_dns(alias: str, state: DnsState, retries: int = 1) -> bool:
     return False
 
 
+def _run_best_effort(cmd: list[str]) -> int:
+    """A teardown delete's return code, never a stall: a hung helper gives up
+    after a generous timeout instead of holding disconnect open forever."""
+    try:
+        return proc.run(cmd, timeout=10).returncode
+    except subprocess.TimeoutExpired:
+        return 1
+
+
 def _restore_dns_once(alias: str, state: DnsState) -> bool:
     if state.mode == "STATIC" and state.servers:
         servers = ",".join(f"'{s}'" for s in state.servers)
@@ -114,28 +125,31 @@ def _restore_dns_once(alias: str, state: DnsState) -> bool:
             "try { Set-DnsClientServerAddress -InterfaceAlias $env:ALIAS "
             "-ResetServerAddresses -ErrorAction Stop; exit 0 } catch { exit 1 }"
         )
-    if proc.powershell(script, env={"ALIAS": alias}).returncode == 0:
-        return True
+    try:
+        if proc.powershell(script, env={"ALIAS": alias}, timeout=10).returncode == 0:
+            return True
+    except subprocess.TimeoutExpired:
+        pass
     # PowerShell can fail at boot before the adapter is up; netsh is a fallback.
     if state.mode == "STATIC" and state.servers:
-        rc = proc.run([
+        rc = _run_best_effort([
             "netsh", "interface", "ipv4", "set", "dnsservers",
             f"name={alias}", "static", state.servers[0], "primary", "validate=no",
-        ]).returncode
+        ])
         if rc != 0:
             return False
         for i, server in enumerate(state.servers[1:], start=2):
-            result = proc.run([
+            result = _run_best_effort([
                 "netsh", "interface", "ipv4", "add", "dnsservers",
                 f"name={alias}", f"address={server}", f"index={i}", "validate=no",
             ])
-            if result.returncode != 0:
+            if result != 0:
                 return False
         return True
-    return proc.run([
+    return _run_best_effort([
         "netsh", "interface", "ipv4", "set", "dnsservers",
         f"name={alias}", "dhcp",
-    ]).returncode == 0
+    ]) == 0
 
 
 def stranded_loopback_adapters(exclude: str | None = None) -> list[str]:
@@ -146,7 +160,11 @@ def stranded_loopback_adapters(exclude: str | None = None) -> list[str]:
     stranded by an *older* session is never put back — switch to it and
     Windows reports no internet.
     """
-    return [a for a in proc.ps_lines(_STRANDED_DNS_PS) if a and a != exclude]
+    try:
+        lines = proc.ps_lines(_STRANDED_DNS_PS, timeout=10)
+    except subprocess.TimeoutExpired:
+        return []
+    return [a for a in lines if a and a != exclude]
 
 
 def release_stranded_dns(exclude: str | None = None) -> list[str]:
@@ -156,19 +174,20 @@ def release_stranded_dns(exclude: str | None = None) -> list[str]:
     xray is not running to answer there. DHCP is the safe target: we hold no
     backup for an adapter some earlier session hijacked.
     """
-    reset: list[str] = []
-    for alias in stranded_loopback_adapters(exclude):
-        rc = proc.run(["netsh", "interface", "ipv4", "set", "dnsservers",
-                       f"name={alias}", "dhcp"]).returncode
-        if rc == 0:
-            reset.append(alias)
+    aliases = stranded_loopback_adapters(exclude)
+    # Each reset is independent; run them side by side, as on macOS.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        done = pool.map(lambda alias: (alias, _run_best_effort(
+            ["netsh", "interface", "ipv4", "set", "dnsservers",
+             f"name={alias}", "dhcp"]) == 0), aliases)
+    reset = sorted(alias for alias, ok in done if ok)
     if reset:
         _flush_dns()
     return reset
 
 
 def _flush_dns() -> None:
-    proc.run(["ipconfig", "/flushdns"])
+    _run_best_effort(["ipconfig", "/flushdns"])
 
 
 def tun_ipv4(index: int) -> str:
@@ -230,11 +249,15 @@ def replace_host_route(server_ip: str, gateway: str) -> None:
 
 def remove_routes(server_ip: str | None = None) -> None:
     # The bare /0 is what releases before the split default installed.
-    proc.run(["route", "delete", "0.0.0.0", "mask", "0.0.0.0", "0.0.0.0"])
+    # Independent, best-effort deletes: side by side, never one hung call
+    # stalling the disconnect.
+    cmds = [["route", "delete", "0.0.0.0", "mask", "0.0.0.0", "0.0.0.0"]]
     for dest, mask in DEFAULT_SPLIT:
-        proc.run(["route", "delete", dest, "mask", mask, "0.0.0.0"])
+        cmds.append(["route", "delete", dest, "mask", mask, "0.0.0.0"])
     if server_ip:
-        proc.run(["route", "delete", server_ip, "mask", "255.255.255.255"])
+        cmds.append(["route", "delete", server_ip, "mask", "255.255.255.255"])
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(_run_best_effort, cmds))
 
 
 def wait_for_tun(name: str = TUN_NAME, timeout: float = 30.0,

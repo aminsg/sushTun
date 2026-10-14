@@ -127,7 +127,7 @@ def restore(src_zip: Path) -> None:
             raise ValueError("not a sushTun backup (no manifest)")
         try:
             manifest = json.loads(zf.read("manifest.json"))
-        except ValueError as e:
+        except (ValueError, RecursionError) as e:
             raise ValueError("not a sushTun backup (corrupt manifest)") from e
         if not isinstance(manifest, dict) or manifest.get("app") != "sushTun":
             raise ValueError("not a sushTun backup")
@@ -167,7 +167,10 @@ def restore(src_zip: Path) -> None:
                 data = b"".join(data_chunks)
 
             if name.endswith(".json"):
-                json.loads(data)  # raises ValueError on corruption
+                try:
+                    json.loads(data)  # raises ValueError on corruption
+                except RecursionError as e:
+                    raise ValueError(f"corrupt JSON in backup: {name}") from e
             payload[name] = data
 
     pdir = paths.profiles_dir()
