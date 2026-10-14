@@ -55,9 +55,60 @@ a = Analysis(
     pathex=[str(ROOT)],
     datas=datas,
     hiddenimports=["cv2", "segno"],
-    excludes=["tkinter"],
+    excludes=[
+        "tkinter",
+        # Qt bindings nothing imports (only QtCore/QtGui/QtWidgets/QtNetwork/
+        # QtSvg are ever imported). This stops their Python shims; the
+        # frameworks/plugins below are filtered out of the collected files.
+        "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickWidgets",
+        "PySide6.QtQmlModels", "PySide6.QtQmlWorkerScript",
+        "PySide6.QtPdf", "PySide6.QtPdfWidgets",
+        "PySide6.QtVirtualKeyboard", "PySide6.QtVirtualKeyboardSettings",
+        "PySide6.QtOpenGL", "PySide6.QtOpenGLWidgets",
+        "PySide6.QtMultimedia", "PySide6.QtMultimediaWidgets",
+        "PySide6.QtTest", "PySide6.QtSql", "PySide6.QtXml",
+        "PySide6.QtDesigner", "PySide6.QtHelp",
+        "PySide6.QtBluetooth", "PySide6.QtNfc",
+        "PySide6.QtPositioning", "PySide6.QtSensors", "PySide6.QtSerialPort",
+        "PySide6.QtCharts", "PySide6.QtDataVisualization",
+        "PySide6.QtWebSockets", "PySide6.QtWebEngineCore",
+        "PySide6.QtWebEngineWidgets", "PySide6.QtWebEngineQuick",
+        "PySide6.Qt3DCore", "PySide6.Qt3DRender",
+        "PySide6.QtSpatialAudio", "PySide6.QtTextToSpeech",
+        "PySide6.QtRemoteObjects", "PySide6.QtScxml", "PySide6.QtStateMachine",
+        "PySide6.QtHttpServer",
+    ],
     noarchive=False,
 )
+
+# Qt frameworks the app never loads, though PyInstaller's PySide6 hook
+# collects them. Verified with otool: none of QtCore/QtGui/QtWidgets/
+# QtNetwork/QtSvg (the only Qt modules imported) links any of these.
+# QtDBus stays: QtGui links it. QtSvg stays: flags and the checkbox glyph.
+_UNUSED_QT_FRAMEWORKS = (
+    "QtOpenGL", "QtPdf", "QtQml", "QtQmlMeta", "QtQmlModels",
+    "QtQmlWorkerScript", "QtQuick", "QtVirtualKeyboard", "QtVirtualKeyboardQml",
+)
+
+
+def _is_unused_qt(dest: str) -> bool:
+    dest = dest.replace("\\", "/")
+    for fw in _UNUSED_QT_FRAMEWORKS:
+        if f"/{fw}.framework/" in dest:
+            return True
+    if "PySide6/Qt/translations/" in dest:
+        # Qt's own .qm files: nothing installs a QTranslator (the app
+        # translates with its own dict), so these never load.
+        return True
+    if dest.endswith("/plugins/imageformats/libqpdf.dylib"):
+        # Needs the dropped QtPdf to load at all.
+        return True
+    return False
+
+
+a.binaries = [e for e in a.binaries if not _is_unused_qt(e[0])]
+a.datas = [e for e in a.datas if not _is_unused_qt(e[0])]
+
 pyz = PYZ(a.pure)
 
 if ONEDIR:
