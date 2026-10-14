@@ -109,6 +109,29 @@ def _help_routing_action(action: QAction, value: str) -> None:
                  tr("Pick your movie-night set, then switch back when the credits roll."))
 
 
+def _tunnel_device_name() -> str:
+    """The tunnel device's fixed per-platform name: tun2socks' utun device
+    on macOS, xray0 everywhere else. Its ifIndex only exists while connected."""
+    if sys.platform == "darwin":
+        from ..core.tun2socks import DEVICE
+        return DEVICE
+    return network.TUN_NAME
+
+
+def _tunnel_device_label(conn) -> str:
+    """The Diagnostics "Tunnel device" value for this connection: the device
+    name, with its index alongside when the platform keeps one
+    (Linux/Windows). macOS stores no numeric index, so a live tunnel there
+    shows the name alone. Kept at module level so bare test doubles driving
+    _refresh_status don't need the whole window."""
+    index = conn.state.tun_index
+    if index:
+        return f"{_tunnel_device_name()} (ifIndex {index})"
+    if conn.is_connected():
+        return _tunnel_device_name()
+    return "—"
+
+
 # ── toolbar ──────────────────────────────────────────────────────────────
 
 class _Toolbar(QWidget):
@@ -1314,9 +1337,15 @@ class MainWindow(QMainWindow):
     def _on_conn_done(self, result=None, error: str | None = None) -> None:
         self._set_busy(False)
         if error:
-            self.step_label.setText(error)
+            # The detail is a raw core exception string: keep it verbatim but
+            # give it a translated prefix and an LTR isolate, so it doesn't
+            # leak bare English into the fa UI or break its RTL flow.
+            self.step_label.setText(
+                tr("Connection failed: {error}", error=ltr(error)))
             QMessageBox.warning(self, tr("Connection"), error)
-        self.btn_reconnect.setVisible(False)
+        # The connection ended either way: nothing left to reconnect, so the
+        # whole notice goes, not just its button.
+        self.status_card.hide_reconnect()
         self._refresh_status()
         self._reload_chains()
         if not error and self.conn.is_connected():
@@ -1416,6 +1445,10 @@ class MainWindow(QMainWindow):
         if not visible:
             return
         connected = self.conn.is_connected()
+        if not connected:
+            # A disconnect (or failed connect) leaves nothing to reconnect:
+            # clear any stale notice rather than stranding its text.
+            self.status_card.hide_reconnect()
         self.status_card.set_connected(connected)
         # Connected, this is the server carrying traffic -- not whichever row
         # happens to be selected.
@@ -1455,6 +1488,15 @@ class MainWindow(QMainWindow):
         self.status_card.set("gateway", st.gateway or "—")
         self.status_card.set("tun",
                              str(st.tun_index) if st.tun_index else "—")
+        # The Diagnostics tab mirrors the same readout. Its Tunnel row names
+        # the device, with the index alongside where the platform keeps one.
+        diag = self.activity_page.diagnostics
+        diag.set_detail("process", tr("RUNNING")
+                        if running or self._orphan_running else tr("STOPPED"))
+        diag.set_detail("iface", st.alias or "—")
+        diag.set_detail("ip", st.ipv4 or "—")
+        diag.set_detail("gateway", st.gateway or "—")
+        diag.set_detail("tun", _tunnel_device_label(self.conn))
         self.btn_connect.setEnabled(not connected and not self._busy)
         self.btn_disconnect.setEnabled(connected and not self._busy)
         self._refresh_status_subtitle()
@@ -1528,10 +1570,13 @@ class MainWindow(QMainWindow):
     # ── settings / routing ------------------------------------------------
 
     def _needs_reconnect(self, what: str) -> None:
-        self.step_label.setText(
+        # One prompt, in the status card with its button: repeating the same
+        # sentence in the step line doubled it on screen. Disconnected there
+        # is nothing to reconnect, so this stays silent.
+        if not self.conn.is_connected():
+            return
+        self.status_card.show_reconnect(
             tr("{what} — reconnect to apply.", what=what))
-        if self.conn.is_connected():
-            self.status_card.show_reconnect(self.step_label.text())
 
     def _reconnect_now(self) -> None:
         if self._busy:
@@ -1770,6 +1815,11 @@ class MainWindow(QMainWindow):
             group.addAction(action)
 
         saved_chains = self.chain_store.list()
+        if not self.servers_menu.actions() and not saved_chains:
+            # An empty submenu renders as a blank sliver; say so instead.
+            empty = self.servers_menu.addAction(tr("No servers"))
+            empty.setEnabled(False)
+            return
         if saved_chains:
             self.servers_menu.addSeparator()
             submenu = self.servers_menu.addMenu(tr("Chains"))

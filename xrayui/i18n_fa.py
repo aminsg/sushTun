@@ -15,6 +15,7 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Throughput": "توان عبوری",
     "Baseline": "خط پایه",
     "Diagnostics": "عیب‌یابی",
+    "Run diagnostics": "اجرای عیب‌یابی",
 
     # -- subscription_panel.py -------------------------------------------
     "never": "هرگز",
@@ -127,6 +128,7 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Source IPv4": "IPv4 مبدأ",
     "Gateway": "دروازه",
     "Tunnel ifIndex": "ifIndex تونل",
+    "Tunnel device": "دستگاه تونل",
     "Used this session": "مصرف این نشست",
     "Servers": "سرورها",
     "Filter by name or address…": "فیلتر بر اساس نام یا آدرس…",
@@ -1378,6 +1380,7 @@ TRANSLATIONS_FA: dict[str, str] = {
     "Auto-connect failed: {error}": "اتصال خودکار ناموفق بود: {error}",
     "no active internet interface": "هیچ رابط اینترنتی فعالی وجود ندارد",
     "Test failed: {error}": "تست ناموفق بود: {error}",
+    "Connection failed: {error}": "اتصال ناموفق بود: {error}",
     "Test finished.": "تست تمام شد.",
     "Connect": "اتصال",
     "Disconnect": "قطع اتصال",
@@ -1412,6 +1415,7 @@ TRANSLATIONS_FA: dict[str, str] = {
         "دیگری منتقل کنید و دوباره باز کنید.",
     "Show": "نمایش",
     "Quit": "خروج",
+    "No servers": "سروری وجود ندارد.",
     "Delete {n} server(s)?": "{n} سرور حذف شود؟",
     "Active server changed": "سرور فعال تغییر کرد",
     "Clipboard has no importable server link.": "کلیپ‌بورد شامل لینک قابل‌وارد‌کردنی نیست.",
