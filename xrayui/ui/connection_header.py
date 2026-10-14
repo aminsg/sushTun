@@ -182,6 +182,8 @@ class ConnectionHeader(QFrame):
         self._chain_path = None
         self._chain_key = None
         self._meta_parts: dict[str, str] = {}
+        self._connected: bool | None = None
+        self._flag_pix = None
         self.set_connected(False)
 
     # ── helpers ──────────────────────────────────────────────────────────
@@ -260,9 +262,9 @@ class ConnectionHeader(QFrame):
         if text == "—":
             text = ""
         if key == "throughput":
-            self._down_up_col[1].setText(ltr(text) if text else "—")
+            self._set_stat(self._down_up_col[1], text)
         elif key == "used":
-            self._session_col[1].setText(ltr(text) if text else "—")
+            self._set_stat(self._session_col[1], text)
         elif key == "endpoint":
             self._set_meta("relay", text)
         elif key == "protocol":
@@ -274,12 +276,23 @@ class ConnectionHeader(QFrame):
             # it in the same slot and meant nothing to the user.
             self._set_meta("iface", text)
 
+    @staticmethod
+    def _set_stat(label: QLabel, text: str) -> None:
+        # The status tick rewrites these every 2 s with the same figures;
+        # an unchanged setText still schedules a repaint, so skip it.
+        new = ltr(text) if text else "—"
+        if label.text() != new:
+            label.setText(new)
+
     def _set_meta(self, slot: str, text: str) -> None:
-        if text:
+        want = (text if slot == "country" else ltr(text)) if text else None
+        if self._meta_parts.get(slot) == want:
+            return
+        if want:
             # The country is a word in the UI language: isolating it as LTR
             # would pin the whole line to the left edge in Persian, away from
             # the flag that leads it.
-            self._meta_parts[slot] = text if slot == "country" else ltr(text)
+            self._meta_parts[slot] = want
         else:
             self._meta_parts.pop(slot, None)
         ordered = sorted(self._meta_parts, key=lambda k: _META_ORDER.index(k)
@@ -291,9 +304,13 @@ class ConnectionHeader(QFrame):
         """The country traffic leaves from: its flag and name lead the meta."""
         code = geo_exit.normalize(code)
         pix = flag_pixmap(code)
-        self._flag.setVisible(pix is not None)
-        if pix is not None:
-            self._flag.setPixmap(pix)
+        # flag_pixmap caches per key, so identity tells a real change from
+        # the status tick re-setting the same flag every 2 s.
+        if pix is not self._flag_pix:
+            self._flag_pix = pix
+            self._flag.setVisible(pix is not None)
+            if pix is not None:
+                self._flag.setPixmap(pix)
         self._set_meta("country", geo_exit.country_name(code, current()) if pix else "")
 
     def set_chain(self, plan, results=None):
@@ -314,10 +331,15 @@ class ConnectionHeader(QFrame):
             self._set_meta('relay', '')
 
     def set_timer(self, text: str) -> None:
-        self._timer_pill.setText(text)
-        self._timer_pill.setVisible(bool(text))
+        if self._timer_pill.text() != text:
+            self._timer_pill.setText(text)
+        if self._timer_pill.isVisible() != bool(text):
+            self._timer_pill.setVisible(bool(text))
 
     def set_connected(self, connected: bool) -> None:
+        if connected == self._connected:
+            return
+        self._connected = connected
         self._state.setText(tr("Connected") if connected else tr("Disconnected"))
         color = OK if connected else MUTED
         bg = "rgba(48,209,88,.14)" if connected else "rgba(152,152,157,.12)"
@@ -350,12 +372,19 @@ def _elide_to_fit(label: QLabel, full: str, mode: Qt.TextElideMode) -> None:
     fm = label.fontMetrics()
     w = label.width()
     if w <= 0:
-        label.setText(full)
-        label.setToolTip("")
+        if label.text() != full:
+            label.setText(full)
+        if label.toolTip():
+            label.setToolTip("")
         return
     elided = fm.elidedText(full, mode, w)
-    label.setText(elided)
-    label.setToolTip(full if elided != full else "")
+    tip = full if elided != full else ""
+    # Called on every resize and every status tick: unchanged text must not
+    # schedule another repaint.
+    if label.text() != elided:
+        label.setText(elided)
+    if label.toolTip() != tip:
+        label.setToolTip(tip)
 
 
 def status_tile_error(header: ConnectionHeader) -> None:

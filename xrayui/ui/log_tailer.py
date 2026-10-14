@@ -1,7 +1,7 @@
 """Follow xray.log and stream new lines to the UI."""
 from __future__ import annotations
 
-import time
+import threading
 
 from PySide6.QtCore import QThread, Signal
 
@@ -12,13 +12,15 @@ from ..core.logtail import read_new_lines
 class LogTailer(QThread):
     lines = Signal(list)
     INTERVAL = 0.5
-    # While the window is hidden: lines still arrive, just in larger batches,
-    # and the thread wakes four times less often.
-    IDLE_INTERVAL = 2.0
+    # While the window is hidden nobody reads the log view: lines still
+    # arrive, just in larger batches, and the thread wakes ten times less
+    # often (fewer CPU wake-ups on battery).
+    IDLE_INTERVAL = 5.0
 
     def __init__(self) -> None:
         super().__init__()
         self._running = True
+        self._wake = threading.Event()
         self.interval = self.INTERVAL
 
     def run(self) -> None:
@@ -32,8 +34,11 @@ class LogTailer(QThread):
                         self.lines.emit(batch)
             except OSError:
                 pass
-            time.sleep(self.interval)
+            # An event, not time.sleep, so stop() wakes the thread at once
+            # instead of waiting out the whole (idle, seconds-long) interval.
+            self._wake.wait(self.interval)
 
     def stop(self) -> None:
         self._running = False
+        self._wake.set()
         self.wait(1500)

@@ -159,6 +159,8 @@ class SidebarItem(QAbstractButton):
 
     def set_count(self, count: str | None) -> None:
         """Show a muted trailing count; None hides it."""
+        if count == self._count:
+            return
         self._count = count
         self.update()
 

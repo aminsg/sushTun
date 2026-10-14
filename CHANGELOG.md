@@ -3,12 +3,14 @@
 ## v0.10.1
 
 ### Fixed
+- **Less battery use while the window is hidden.** Hiding sushTun to the menu bar (or minimising it) now pauses everything that only feeds the window: the 2-second status refresh stops, the log view stops re-laying-out lines and the tunnel health check slows from every 15 seconds to every minute. Showing the window resumes it all at once. Repeated status updates that changed nothing no longer repaint their labels either.
 - **macOS: copy and paste now work.** The window runs with administrator rights, and in that state Qt cannot reach the macOS clipboard at all, so Cmd+V found nothing and a copied link never left the app. Paste, copy and cut in text fields, the paste-to-import shortcut, the routing import and export, and the share-link copy button now use your own clipboard directly.
 - **macOS: no second "sushTun" in the Dock and Cmd+Tab.** The helper that asks for the administrator password used to stay alive for the whole session, and macOS listed it as another copy of the app. It now exits as soon as the password is accepted, and a start that fails right away (privacy protection) is still recognised.
 
 <!-- fa -->
 
 ### چی درست شده
+- **وقتی پنجره مخفیه، باتری کمتر مصرف می‌شه.** وقتی sushTun رو می‌فرستی تو منو بار (یا minimize می‌کنی)، همه‌چیزی که فقط برای خود پنجره بود متوقف می‌شه: رفرش ۲ ثانیه‌ای وضعیت وایمیسته، لاگ دیگه مدام بازچینی نمی‌شه و چک سلامت تونل از هر ۱۵ ثانیه می‌شه هر دقیقه. همین‌که پنجره رو باز کنی همه‌چی برمی‌گرده. آپدیت‌های تکراری‌ای هم که چیزی رو عوض نمی‌کردن دیگه باعث repaint نمی‌شن.
 - **مک: کپی و پیست دوباره کار می‌کنه.** پنجره‌ی برنامه با دسترسی ادمین اجرا می‌شه و تو این حالت Qt اصلاً به کلیپ‌بورد macOS دسترسی نداره؛ برای همین Cmd+V چیزی پیدا نمی‌کرد و لینکی که کپی می‌کردی از برنامه بیرون نمی‌رفت. حالا پیست، کپی و کات تو فیلدهای متنی، میان‌بر پیست برای import، import و export قوانین مسیریابی و دکمه‌ی کپی لینک اشتراک مستقیم از کلیپ‌بورد خودت استفاده می‌کنن.
 - **مک: دیگه sushTun دوم تو Dock و Cmd+Tab نمی‌مونه.** ابزار کمکی‌ای که رمز ادمین رو می‌پرسید تا آخر برنامه زنده می‌موند و macOS اون رو یه نسخه‌ی دیگه از برنامه نشون می‌داد. حالا همین‌که رمز قبول شد بسته می‌شه، و اگه برنامه همون لحظه‌ی اول بالا نیاد (مثلاً به‌خاطر حفاظت حریم خصوصی) هنوز تشخیص داده می‌شه.
 
