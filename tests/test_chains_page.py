@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QApplication, QLabel
 from xrayui import i18n
 from xrayui.core import chains
 from xrayui.core.profiles import Profile
-from xrayui.ui.pages.chains_page import ChainEditor, ChainsPage
+from xrayui.ui.pages.chains_page import ChainCard, ChainEditor, ChainsPage
 
 
 def profiles():
@@ -109,3 +109,35 @@ def test_editor_preview_stays_on_one_row(lang, hop_count):
     assert len(rows) == 1
     assert chip >= 70
     assert height <= 120
+
+
+def test_fa_metric_value_and_unit_share_one_line():
+    # T1-FA-METRICS: the Persian download unit wrapped the tile onto two
+    # lines. The fa tile unit stays short so value+unit fit on one line,
+    # even with long values at a narrow card width.
+    app = QApplication.instance() or QApplication([])
+    i18n.set_language('fa')
+    try:
+        assert len(i18n.tr('Mbit/s')) <= 8, i18n.tr('Mbit/s')
+        items = profiles()
+        chain = chains.Chain(name='Route', hops=[p.uid for p in items])
+        card = ChainCard(chain, items, {
+            'warm_ms': 12345.0, 'cold_ms': 6789.0, 'download_mbps': 987.6,
+            'verdict': 'OK', 'prefixes': []}, {})
+        # Natural height: a forced taller card stretches the tiles and their
+        # labels with it, which would fake a multi-line reading.
+        card.resize(576, card.sizeHint().height())
+        card.show()
+        app.processEvents()
+        units = [lab for lab in card.findChildren(QLabel)
+                 if lab.objectName() == 'ChainUnit']
+        assert len(units) == 3
+        for unit in units:
+            fm = unit.fontMetrics()
+            assert unit.height() <= fm.lineSpacing() * 1.5, unit.text()
+            assert fm.horizontalAdvance(unit.text()) <= unit.width(), unit.text()
+        card.close()
+        card.deleteLater()
+    finally:
+        i18n.set_language('en')
+    app.processEvents()
