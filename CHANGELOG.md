@@ -4,11 +4,13 @@
 
 ### Fixed
 - **macOS: copy and paste now work.** The window runs with administrator rights, and in that state Qt cannot reach the macOS clipboard at all, so Cmd+V found nothing and a copied link never left the app. Paste, copy and cut in text fields, the paste-to-import shortcut, the routing import and export, and the share-link copy button now use your own clipboard directly.
+- **macOS: closing the window hides it instead of quitting, and the Dock brings it back.** The red button (or Cmd+W) now always hides the window while the tunnel keeps running — before, with no tray icon it quit the app and cut the tunnel. Clicking the Dock icon brings a hidden window back; quitting stays Cmd+Q or Quit.
 
 <!-- fa -->
 
 ### چی درست شده
 - **مک: کپی و پیست دوباره کار می‌کنه.** پنجره‌ی برنامه با دسترسی ادمین اجرا می‌شه و تو این حالت Qt اصلاً به کلیپ‌بورد macOS دسترسی نداره؛ برای همین Cmd+V چیزی پیدا نمی‌کرد و لینکی که کپی می‌کردی از برنامه بیرون نمی‌رفت. حالا پیست، کپی و کات تو فیلدهای متنی، میان‌بر پیست برای import، import و export قوانین مسیریابی و دکمه‌ی کپی لینک اشتراک مستقیم از کلیپ‌بورد خودت استفاده می‌کنن.
+- **مک: بستن پنجره دیگه برنامه رو نمی‌بنده، فقط قایمش می‌کنه و داک برش می‌گردونه.** دکمه‌ی قرمز (یا Cmd+W) حالا همیشه پنجره رو قایم می‌کنه و تونل وصل می‌مونه؛ قبلاً اگه آیکون tray نبود برنامه کلاً بسته می‌شد و تونل قطع می‌شد. رو آیکون داک که کلیک کنی پنجره برمی‌گرده؛ بستن کامل همون Cmd+Q یا Quit می‌مونه.
 
 ## v0.10.0
 
