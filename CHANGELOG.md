@@ -2,11 +2,17 @@
 
 ## v0.10.1
 
+### New
+- **Menu-bar icon shows the connection at a glance.** Disconnected, the menu-bar (tray) icon is the sushTun mascot; connected, it becomes the flag of the country your traffic really exits from, and switches with it. When the country is unknown it shows the mascot with a green dot instead of a wrong flag, amber while connecting, and the tooltip names the state, the server and the country.
+
 ### Fixed
 - **macOS: copy and paste now work.** The window runs with administrator rights, and in that state Qt cannot reach the macOS clipboard at all, so Cmd+V found nothing and a copied link never left the app. Paste, copy and cut in text fields, the paste-to-import shortcut, the routing import and export, and the share-link copy button now use your own clipboard directly.
 - **macOS: no second "sushTun" in the Dock and Cmd+Tab.** The helper that asks for the administrator password used to stay alive for the whole session, and macOS listed it as another copy of the app. It now exits as soon as the password is accepted, and a start that fails right away (privacy protection) is still recognised.
 
 <!-- fa -->
+
+### چی اضافه شده
+- **آیکون بالای صفحه وضعیت اتصال رو یه نگاه نشون می‌ده.** وقتی وصل نیستی آیکون همون عروسک sushTunـه؛ وقتی وصلی، پرچم همون کشوریه که ترافیکت واقعاً ازش بیرون می‌زنه و باهاش عوض می‌شه. اگه کشور معلوم نباشه به‌جای پرچم اشتباه، عروسک رو با یه نقطه‌ی سبز نشون می‌ده، موقع وصل شدن نارنجیه، و اگه موس رو نگه داری وضعیت و اسم سرور و کشور رو می‌گه.
 
 ### چی درست شده
 - **مک: کپی و پیست دوباره کار می‌کنه.** پنجره‌ی برنامه با دسترسی ادمین اجرا می‌شه و تو این حالت Qt اصلاً به کلیپ‌بورد macOS دسترسی نداره؛ برای همین Cmd+V چیزی پیدا نمی‌کرد و لینکی که کپی می‌کردی از برنامه بیرون نمی‌رفت. حالا پیست، کپی و کات تو فیلدهای متنی، میان‌بر پیست برای import، import و export قوانین مسیریابی و دکمه‌ی کپی لینک اشتراک مستقیم از کلیپ‌بورد خودت استفاده می‌کنن.

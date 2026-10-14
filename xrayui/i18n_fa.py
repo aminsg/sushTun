@@ -1596,6 +1596,12 @@ TRANSLATIONS_FA: dict[str, str] = {
     # -- ui/a-foundation: connection header ----------------------------------
     "Connected": "متصل",
     "Disconnected": "قطع شده",
+    "sushTun — Disconnected": "sushTun — قطع شده",
+    "sushTun — Connecting…": "sushTun — در حال اتصال…",
+    "sushTun — Connected": "sushTun — وصل شده",
+    "sushTun — Connected · {server}": "sushTun — وصل به {server}",
+    "sushTun — Connected · {country}": "sushTun — وصل · {country}",
+    "sushTun — Connected · {server} ({country})": "sushTun — وصل به {server} ({country})",
     "Down / Up": "دانلود / آپلود",
     "This session": "این نشست",
     "More connection actions": "گزینه‌های بیشتر اتصال",
