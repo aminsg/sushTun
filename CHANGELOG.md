@@ -2,11 +2,19 @@
 
 ## v0.10.1
 
+### New
+- **Lighter and faster to start.** Heavy pieces the window doesn't need right away (the QR-code library, the network stack behind update/subscription/geo checks, the settings and import dialogs, the Persian translation table in English mode) now load only when first used, and the flag icons cache is bounded. Startup uses about 6 MB less memory and the macOS app bundle shrank by ~27 MB (unused Qt pieces like QtQml, QtQuick, QtPdf and Qt's own translations are no longer shipped).
+- **Quieter tunnel logging.** Xray no longer writes a line to the log for every single connection (that output landed in `xray.log` and kept the log follower and the Activity page busy); only real warnings and errors are logged, as before.
+
 ### Fixed
 - **macOS: copy and paste now work.** The window runs with administrator rights, and in that state Qt cannot reach the macOS clipboard at all, so Cmd+V found nothing and a copied link never left the app. Paste, copy and cut in text fields, the paste-to-import shortcut, the routing import and export, and the share-link copy button now use your own clipboard directly.
 - **macOS: no second "sushTun" in the Dock and Cmd+Tab.** The helper that asks for the administrator password used to stay alive for the whole session, and macOS listed it as another copy of the app. It now exits as soon as the password is accepted, and a start that fails right away (privacy protection) is still recognised.
 
 <!-- fa -->
+
+### چی اضافه شده
+- **سبک‌تر و سریع‌تر بالا میاد.** چیزهای سنگینی که پنجره همون لحظه‌ی اول لازمشون نداره (کتابخونه‌ی QR، بخش شبکه‌ی آپدیت و سابسکریپشن و geo، پنجره‌های تنظیمات و import، جدول ترجمه‌ی فارسی تو حالت انگلیسی) حالا فقط وقتی لازم بشن لود می‌شن، و حافظه‌ی موقت آیکون پرچم‌ها هم سقف داره. مصرف حافظه موقع بالا اومدن حدود ۶ مگ کمتر شده و حجم نسخه‌ی مک هم حدود ۲۷ مگ کم شده (تیکه‌های اضافه‌ی Qt مثل QtQml و QtPdf دیگه همراهش نیستن).
+- **لاگ تونل خلوت‌تر شد.** دیگه Xray برای هر تک‌تک اتصال یه خط لاگ نمی‌نویسه (اون خط‌ها می‌رفتن تو xray.log و صفحه‌ی Activity رو مشغول نگه می‌داشتن)؛ مثل قبل فقط هشدارها و خطاهای واقعی لاگ می‌شن.
 
 ### چی درست شده
 - **مک: کپی و پیست دوباره کار می‌کنه.** پنجره‌ی برنامه با دسترسی ادمین اجرا می‌شه و تو این حالت Qt اصلاً به کلیپ‌بورد macOS دسترسی نداره؛ برای همین Cmd+V چیزی پیدا نمی‌کرد و لینکی که کپی می‌کردی از برنامه بیرون نمی‌رفت. حالا پیست، کپی و کات تو فیلدهای متنی، میان‌بر پیست برای import، import و export قوانین مسیریابی و دکمه‌ی کپی لینک اشتراک مستقیم از کلیپ‌بورد خودت استفاده می‌کنن.
