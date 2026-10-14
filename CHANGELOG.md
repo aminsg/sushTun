@@ -2,6 +2,9 @@
 
 ## v0.10.1
 
+### New
+- **Menu-bar icon shows the connection at a glance.** Disconnected, the menu-bar (tray) icon is the sushTun mascot; connected, it becomes the flag of the country your traffic really exits from, and switches with it. When the country is unknown it shows the mascot with a green dot instead of a wrong flag, amber while connecting, and the tooltip names the state, the server and the country.
+
 ### Fixed
 - **Disconnecting is fast now.** The button used to leave the window looking connected for seconds while a dozen network commands ran one by one, and a stuck helper could hold the disconnect open with no bound at all. The button now says it is disconnecting at once, the cleanup steps run side by side, and every helper call gives up after a few seconds instead of hanging forever.
 - **macOS: copy and paste now work.** The window runs with administrator rights, and in that state Qt cannot reach the macOS clipboard at all, so Cmd+V found nothing and a copied link never left the app. Paste, copy and cut in text fields, the paste-to-import shortcut, the routing import and export, and the share-link copy button now use your own clipboard directly.
@@ -9,6 +12,9 @@
 - **macOS: closing the window hides it instead of quitting, and the Dock brings it back.** The red button (or Cmd+W) now always hides the window while the tunnel keeps running — before, with no tray icon it quit the app and cut the tunnel. Clicking the Dock icon brings a hidden window back; quitting stays Cmd+Q or Quit.
 
 <!-- fa -->
+
+### چی اضافه شده
+- **آیکون بالای صفحه وضعیت اتصال رو یه نگاه نشون می‌ده.** وقتی وصل نیستی آیکون همون عروسک sushTunـه؛ وقتی وصلی، پرچم همون کشوریه که ترافیکت واقعاً ازش بیرون می‌زنه و باهاش عوض می‌شه. اگه کشور معلوم نباشه به‌جای پرچم اشتباه، عروسک رو با یه نقطه‌ی سبز نشون می‌ده، موقع وصل شدن نارنجیه، و اگه موس رو نگه داری وضعیت و اسم سرور و کشور رو می‌گه.
 
 ### چی درست شده
 - **قطع کردن سریع شد.** قبلاً وقتی Disconnect رو می‌زدی، برنامه چند ثانیه همون‌جوری وصل نشون می‌داد چون یه مشت دستور شبکه رو دونه‌دونه اجرا می‌کرد، و اگه یه ابزار گیر می‌کرد قطع شدن دیگه هیچ‌وقت تموم نمی‌شد. حالا دکمه همون لحظه می‌گه داره قطع می‌کنه، تمیزکاری‌ها با هم انجام می‌شن، و هر دستوری که گیر کنه بعد چند ثانیه بی‌خیالش می‌شه.

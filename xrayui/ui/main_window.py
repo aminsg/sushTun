@@ -663,16 +663,17 @@ class MainWindow(QMainWindow):
     # ── tray ──────────────────────────────────────────────────────────────
 
     def _build_tray(self) -> None:
+        from . import tray_icon as tray_mod
         from .icon import app_icon as _app_icon
-        _icon = _app_icon()
-        self.setWindowIcon(_icon)
+        self.setWindowIcon(_app_icon())
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self.tray = None
             self.routing_menu = None
             self.servers_menu = None
             return
-        self.tray = QSystemTrayIcon(_icon, self)
-        self.tray.setToolTip("sushTun")
+        self.tray = QSystemTrayIcon(
+            tray_mod.tray_icon("disconnected", None, tray_mod.system_is_dark()), self)
+        self.tray.setToolTip(tray_mod.tray_tooltip("disconnected"))
         menu = QMenu()
         menu.addAction(tr("Show"), self._show_window)
         menu.addAction(tr("Connect"), self._connect)
@@ -688,6 +689,67 @@ class MainWindow(QMainWindow):
             if reason == QSystemTrayIcon.Trigger else None)
         self.tray.show()
         QApplication.instance().setQuitOnLastWindowClosed(False)
+
+    def _tray_state(self) -> str:
+        # Connecting is the busy window between asking and knowing: busy and
+        # not (or no longer) connected. A busy disconnect keeps showing the
+        # connected flag until it lands, then flips via _on_conn_done.
+        if self.conn.is_connected():
+            return "connected"
+        return "connecting" if self._busy else "disconnected"
+
+    def _tray_country(self) -> str | None:
+        # Same source as the header's flag, without touching any widget, so
+        # this stays cheap enough to run while the window is hidden.
+        try:
+            if not self.conn.is_connected():
+                return None
+            uid = self.conn.state.chain_uid
+            if uid:
+                detected = getattr(self, "_chain_exit", None)
+                if detected and detected[0] == uid:
+                    return geo_exit.normalize(detected[1].country)
+                report = self.chain_results.get(uid) or {}
+                return geo_exit.normalize(report.get("country"))
+            profile = self._connected_profile()
+            if profile is None:
+                return None
+            return self.profiles.model.country_of(profile.uid)
+        except Exception:
+            return None
+
+    def _tray_server_name(self) -> str:
+        try:
+            if not self.conn.is_connected():
+                return ""
+            if self.conn.state.chain_uid:
+                plan = self._connected_chain
+                if plan is None or plan.uid != self.conn.state.chain_uid:
+                    saved = self.chain_store.get(self.conn.state.chain_uid)
+                    try:
+                        plan = chains.resolve(saved, self.store.list()) if saved else None
+                    except ValueError:
+                        plan = None
+                return plan.name if plan else ""
+            profile = self._connected_profile()
+            return profile.name if profile else ""
+        except Exception:
+            return ""
+
+    def _refresh_tray(self) -> None:
+        # Always runs, even with the window hidden or minimised: cached icons
+        # only, no I/O, no timers. Called from the existing state callbacks.
+        if getattr(self, "tray", None) is None:
+            return
+        from . import tray_icon as tray_mod
+        try:
+            state = self._tray_state()
+            country = self._tray_country()
+            name = self._tray_server_name()
+            self.tray.setIcon(tray_mod.tray_icon(state, country, tray_mod.system_is_dark()))
+            self.tray.setToolTip(tray_mod.tray_tooltip(state, name, country))
+        except Exception:
+            pass
 
     def _build_mac_menu(self) -> None:
         """The macOS menu bar, with Quit and Settings in the app menu.
@@ -986,6 +1048,7 @@ class MainWindow(QMainWindow):
         if "country" in fields:
             self._refresh_status_subtitle()
             self._show_exit_of_connected()
+            self._refresh_tray()
 
     def _detect_exit_after_connect(self) -> None:
         chain_uid = self.conn.state.chain_uid
@@ -1002,6 +1065,7 @@ class MainWindow(QMainWindow):
                     if self.conn.is_connected() and self.conn.state.chain_uid == chain_uid:
                         self._chain_exit = (chain_uid, result)
                         self._show_exit_of_connected()
+                        self._refresh_tray()
                 else:
                     self.exitDetected.emit(uid, result)
 
@@ -1013,6 +1077,7 @@ class MainWindow(QMainWindow):
         self.profiles.update_detail(uid, fields)
         self._refresh_status_subtitle()
         self._show_exit_of_connected()
+        self._refresh_tray()
 
     def _show_exit_of_connected(self) -> None:
         uid = self.conn.state.chain_uid if self.conn.is_connected() else ''
@@ -1517,6 +1582,12 @@ class MainWindow(QMainWindow):
     # ── status ------------------------------------------------------------
 
     def _refresh_status(self) -> None:
+        # The tray keeps updating while hidden or minimised (cached icons
+        # only); everything below it is on-screen state and stays skipped.
+        # Looked up defensively: headless namespace stubs call this unbound.
+        refresh_tray = getattr(self, "_refresh_tray", None)
+        if callable(refresh_tray):
+            refresh_tray()
         visible = self.isVisible() and not self.isMinimized()
         # Hidden in the tray there is nothing on screen to update: skip the
         # background process checks and traffic sampling, which kept a
@@ -2038,6 +2109,8 @@ class MainWindow(QMainWindow):
         self.btn_disconnect.setEnabled(not busy)
         if self.status_card.btn_more is not None:
             self.status_card.btn_more.setEnabled(not busy)
+        # Entering/leaving the connecting state while disconnected.
+        self._refresh_tray()
 
     # ── frameless window chrome -------------------------------------------
 
