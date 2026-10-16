@@ -1,4 +1,4 @@
-"""Menu-bar (tray) status icon: flag when connected, sushbot otherwise."""
+"""Menu-bar (tray) status icon: mascot glyph when idle, flag when connected."""
 from __future__ import annotations
 
 import os
@@ -77,7 +77,7 @@ def test_same_country_is_cached_and_countries_differ(qapp):
     assert _opaque_pixels(tray_mod.tray_pixmap("connected", "jp")) > 100
 
 
-def test_unknown_country_is_badged_sushbot_not_blank_or_wrong_flag(qapp):
+def test_unknown_country_is_badged_glyph_not_blank_or_wrong_flag(qapp):
     unknown = tray_mod.tray_pixmap("connected", None)
     bad_code = tray_mod.tray_pixmap("connected", "xx")
     plain = tray_mod.tray_pixmap("disconnected")
@@ -93,11 +93,47 @@ def test_connecting_is_distinct_from_both_ends(qapp):
     assert len(set(states.values())) == 3
 
 
-def test_icon_is_full_colour_not_a_mask(qapp):
-    icon = tray_mod.tray_icon("connected", "de")
-    assert not icon.isNull() and icon.isMask() is False
-    assert tray_mod.tray_icon("disconnected").isMask() is False
+def test_mask_flag_per_state(qapp):
+    # Only the idle glyph is a macOS template image; badges and flags carry
+    # colour, which a mask would destroy.
+    assert tray_mod.tray_icon("disconnected").isMask() is True
+    assert tray_mod.tray_icon("connecting").isMask() is False
+    assert tray_mod.tray_icon("connected", None).isMask() is False
+    assert tray_mod.tray_icon("connected", "de").isMask() is False
+    assert tray_mod.tray_icon("bogus-state").isMask() is True
     assert tray_mod.tray_icon("connected", "de") is tray_mod.tray_icon("connected", "de")
+
+
+def test_idle_glyph_is_template_safe(qapp):
+    # A template keeps only alpha: every drawn pixel must be black, on a
+    # fully transparent background with no tile or frame at the corners.
+    pix = tray_mod.tray_pixmap("disconnected")
+    img = _argb(pix.toImage())
+    seen = 0
+    for y in range(img.height()):
+        for x in range(img.width()):
+            c = img.pixelColor(x, y)
+            if c.alpha() > 10:
+                assert (c.red(), c.green(), c.blue()) == (0, 0, 0)
+                seen += 1
+    assert seen > 100
+    for x, y in ((0, 0), (43, 0), (0, 43), (43, 43), (21, 0)):
+        assert img.pixelColor(x, y).alpha() < 10
+
+
+def test_appearance_dark_only_where_it_is_baked_in(qapp):
+    # The template glyph and full-colour flags ignore `dark` (macOS tints the
+    # mask itself); the badged states pre-tint the glyph, so they must differ.
+    assert _sig(tray_mod.tray_pixmap("disconnected", None, True)) == _sig(
+        tray_mod.tray_pixmap("disconnected", None, False))
+    assert tray_mod.tray_pixmap("disconnected", None, True) is \
+        tray_mod.tray_pixmap("disconnected", None, False)
+    assert _sig(tray_mod.tray_pixmap("connected", "de", True)) == _sig(
+        tray_mod.tray_pixmap("connected", "de", False))
+    assert _sig(tray_mod.tray_pixmap("connecting", None, True)) != _sig(
+        tray_mod.tray_pixmap("connecting", None, False))
+    assert _sig(tray_mod.tray_pixmap("connected", None, True)) != _sig(
+        tray_mod.tray_pixmap("connected", None, False))
 
 
 def test_tooltips_carry_state_server_and_country(qapp):
@@ -191,7 +227,7 @@ def test_tray_keeps_updating_while_the_window_is_hidden(window, monkeypatch):
     assert "Disconnected" in fake.tips[-1]
 
 
-def test_tray_disconnect_returns_to_plain_sushbot(window, monkeypatch):
+def test_tray_disconnect_returns_to_plain_glyph(window, monkeypatch):
     p = window.store.save(Profile(name="Berlin", address="a.example.com", port=443, id="u"))
     window.store.set_active(p.uid)
     window._reload_profiles()

@@ -15,6 +15,7 @@
 - **macOS: a proper menu bar.** The app menu now has About sushTun, Settings… (`Cmd+,`), Hide sushTun (`Cmd+H`) and Quit sushTun (`Cmd+Q`), and there are Edit (Cut/Copy/Paste/Select All), Window (Minimize, Zoom, Close Window) and Help menus with Mac-standard shortcuts. A login launch always starts in the menu bar instead of popping a window (and asking for the password) right after login, and notifications stay quiet while you are looking at the window. The update screen for an installed app names the `sushTun-macos.dmg` file to download.
 - **macOS: closing the window hides it instead of quitting, and the Dock brings it back.** The red button (or Cmd+W) now always hides the window while the tunnel keeps running — before, with no tray icon it quit the app and cut the tunnel. Clicking the Dock icon brings a hidden window back; quitting stays Cmd+Q or Quit.
 - **macOS: the menu-bar icon is back.** The administrator copy used to start outside your login session, so macOS kept its menu-bar icon (and, on the side, the Dock and the clipboard) away from it. It now starts inside your session — still with administrator rights — so the icon shows up as it should.
+- **A cleaner menu-bar icon when disconnected.** The idle icon used to shrink the whole colourful app tile into the menu bar, where it looked like a heavy dark square next to the system's simple monochrome icons. It is now a plain sushi-roll-with-chopsticks glyph that macOS tints itself for light and dark menu bars, like every other menu-bar icon; the connecting (amber) and unknown-country (green) badges and the connected flags are unchanged.
 
 <!-- fa -->
 
@@ -31,6 +32,7 @@
 - **مک: منوی درست‌وحسابی.** منوی برنامه حالا About sushTun، Settings… (`Cmd+,`)، Hide sushTun (`Cmd+H`) و Quit sushTun (`Cmd+Q`) داره، و منوهای Edit (کات/کپی/پیست/انتخاب همه)، Window (کوچک کردن، زوم، بستن پنجره) و Help هم با میان‌برهای استاندارد مک اضافه شدن. اجرای موقع ورود همیشه تو نوار منو شروع می‌شه و دیگه بلافاصله بعد از ورود پنجره باز نمی‌کنه (و رمز نمی‌خواد)، و وقتی داری به پنجره نگاه می‌کنی اعلان اضافه نمیاد. صفحه‌ی آپدیت برای نسخه‌ی نصبی هم اسم فایل `sushTun-macos.dmg` رو می‌گه که دانلود کنی.
 - **مک: بستن پنجره دیگه برنامه رو نمی‌بنده، فقط قایمش می‌کنه و داک برش می‌گردونه.** دکمه‌ی قرمز (یا Cmd+W) حالا همیشه پنجره رو قایم می‌کنه و تونل وصل می‌مونه؛ قبلاً اگه آیکون tray نبود برنامه کلاً بسته می‌شد و تونل قطع می‌شد. رو آیکون داک که کلیک کنی پنجره برمی‌گرده؛ بستن کامل همون Cmd+Q یا Quit می‌مونه.
 - **مک: آیکون منو بار برگشت.** نسخه‌ی ادمین برنامه قبلاً بیرون از سشن لاگین تو اجرا می‌شد و macOS آیکون بالای صفحه (و کنارش داک و کلیپ‌بورد) رو ازش قایم می‌کرد. حالا تو همون سشن خودت بالا میاد — ولی هنوز با دسترسی ادمین — پس آیکون همون‌طور که باید دیده می‌شه.
+- **آیکون بالای صفحه وقتی وصلی نیستی تمیزتر شد.** قبلاً آیکون کل عکس رنگی برنامه رو کوچیک می‌کرد می‌ذاشت تو منو بار و کنار آیکون‌های ساده‌ی سیستم یه مربع تیره‌ی سنگین به نظر می‌رسید. حالا یه شکل ساده‌ی سوشی با چاپ‌استیکه که خود macOS تو حالت روشن و تیره رنگش می‌کنه، مثل بقیه‌ی آیکون‌های منو بار؛ نقطه‌های نارنجی موقع وصل شدن و سبز کشور نامعلوم و پرچم‌های موقع اتصال همون‌جوری موندن.
 
 ## v0.10.0
 
