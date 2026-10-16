@@ -57,3 +57,50 @@ def test_fail_connect_cleans_up_when_bridge_stop_raises(monkeypatch, tmp_path):
     assert removed == [server, server]  # pre-start sweep plus the failure sweep
     assert not runtime.exists()
     assert not conn.state.is_connected()
+
+
+class _HungChild:
+    def terminate(self):
+        pass
+
+    def kill(self):
+        pass
+
+    def poll(self):
+        return None
+
+    def wait(self, timeout=None):
+        raise subprocess.TimeoutExpired("xray", timeout)
+
+
+def test_speedtest_batch_never_leaves_a_zombie(monkeypatch, tmp_path):
+    from xrayui import paths
+    from xrayui.core import speedtest
+
+    monkeypatch.setattr(paths, "state_dir", lambda: tmp_path)
+    monkeypatch.setattr(speedtest.subprocess, "Popen", lambda *a, **k: _HungChild())
+    monkeypatch.setattr(speedtest, "build_test_config", lambda *a, **k: {})
+    monkeypatch.setattr(speedtest, "_wait_ready", lambda *a, **k: True)
+    monkeypatch.setattr(speedtest, "_measure_group",
+                        lambda *a, **k: None)
+    profile = types.SimpleNamespace(uid="p1")
+
+    assert speedtest._run_batch(
+        [profile], [54321], url="http://example.com/", timeout=5,
+        iface_alias="", on_result=lambda *a: None,
+        cancel=__import__("threading").Event()) is True
+
+
+def test_chain_probe_never_leaves_a_zombie(monkeypatch):
+    import threading
+
+    from xrayui.core import chain_test, speedtest
+
+    monkeypatch.setattr(chain_test.subprocess, "Popen", lambda *a, **k: _HungChild())
+    monkeypatch.setattr(chain_test, "build_config", lambda *a, **k: {})
+    monkeypatch.setattr(speedtest, "_port_open", lambda port: True)
+    profiles = [types.SimpleNamespace(uid="p1")]
+
+    with chain_test._temporary(profiles, timeout=5, cancel=threading.Event(),
+                               iface_alias="", core_cfg=None) as port:
+        assert port > 0

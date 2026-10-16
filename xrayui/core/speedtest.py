@@ -324,7 +324,10 @@ def _run_batch(
                 popen.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 popen.kill()
-                popen.wait(timeout=3)
+                try:
+                    popen.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    pass  # unreapable; its results are already recorded
 
 
 def _test_group(
