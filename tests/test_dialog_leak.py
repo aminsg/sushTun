@@ -143,6 +143,28 @@ def test_settings_window_cycles_leave_nothing_behind(window):
     assert len(window.findChildren(SettingsWindow)) == 0
 
 
+def test_qr_dialog_cycles_leave_nothing_behind(qapp, monkeypatch):
+    from xrayui.core.profiles import Profile
+    from xrayui.ui.server_table import QrDialog
+    from xrayui.ui.widgets import ProfilePanel
+
+    monkeypatch.setattr(QrDialog, "exec", lambda self: 0)
+
+    panel = ProfilePanel()
+    p = Profile(name="S1", address="s.example.com", port=443, id="u", uid="u1")
+    panel.set_profiles([p], "u1")
+
+    for _ in range(4):
+        panel._show_qr("u1")
+    _flush()
+    try:
+        assert len(panel.findChildren(QrDialog)) == 0
+    finally:
+        panel.close()
+        panel.deleteLater()
+        _flush()
+
+
 def test_a_late_validation_result_does_not_touch_a_dead_page(qapp, monkeypatch):
     import gc
 

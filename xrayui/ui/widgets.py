@@ -482,7 +482,9 @@ class _ServerTableCore(QWidget):
         if link is None:
             self._no_share_link()
             return
-        QrDialog(p.name, link, self).exec()
+        dlg = QrDialog(p.name, link, self)
+        dlg.exec()
+        dlg.deleteLater()
 
     def _build_context_menu(self, uids: list[str]) -> QMenu | None:
         if not uids:
