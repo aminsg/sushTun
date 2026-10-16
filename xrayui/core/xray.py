@@ -108,23 +108,28 @@ class XrayProcess:
         return self._proc is not None and self._proc.poll() is None
 
     def stop(self, *, sweep_orphans: bool = True) -> None:
-        if self._proc is not None:
-            if self._proc.poll() is None:
-                if IS_WIN:
-                    proc.run(["taskkill", "/f", "/t", "/pid", str(self._proc.pid)], timeout=5)
-                else:
-                    self._proc.kill()
+        try:
+            if self._proc is not None:
+                if self._proc.poll() is None:
+                    if IS_WIN:
+                        proc.run(["taskkill", "/f", "/t", "/pid", str(self._proc.pid)], timeout=5)
+                    else:
+                        self._proc.kill()
+                    try:
+                        self._proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        self._proc.kill()
+                        try:
+                            self._proc.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            pass  # unreapable; never stall disconnect for it
+            if sweep_orphans and not self._stopped_clean:
+                _kill_all()
+                self._stopped_clean = True
+        finally:
+            self._proc = None
+            if self._log is not None:
                 try:
-                    self._proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    self._proc.kill()
-                    self._proc.wait(timeout=3)
-        if sweep_orphans and not self._stopped_clean:
-            _kill_all()
-            self._stopped_clean = True
-        self._proc = None
-        if self._log is not None:
-            try:
-                self._log.close()
-            finally:
-                self._log = None
+                    self._log.close()
+                finally:
+                    self._log = None
