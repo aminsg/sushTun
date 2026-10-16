@@ -41,3 +41,50 @@ def test_build_spec_drops_unused_qt_but_keeps_what_the_app_loads():
     # QtPdf-bound image plugin go through the same collected-files filter.
     assert "Qt/translations" in spec
     assert "libqpdf" in spec
+
+
+def _filter_from_spec():
+    """The spec's own filter function, exec'd from its marked block so this
+    test exercises the real matcher, not a copy of it."""
+    spec = (ROOT / "tools" / "build.spec").read_text(encoding="utf-8")
+    start = spec.index("# -- bundle-filter-begin")
+    end = spec.index("# -- bundle-filter-end --")
+    namespace: dict = {}
+    exec(compile(spec[start:end], "build.spec", "exec"), namespace)
+    return namespace["_is_unused_qt_entry"]
+
+
+def test_build_spec_filter_drops_every_spelling_of_removed_frameworks():
+    # A removed framework must vanish in every TOC spelling, or the .app is
+    # left with symlinks to nowhere and `codesign` fails: files inside the
+    # framework dir, the top-level SYMLINK entries the Qt hooks collect
+    # (BUNDLE turns those into Contents/Frameworks/<Name> and
+    # Contents/Resources/<Name>), and the Contents/… spellings themselves.
+    drop = _filter_from_spec()
+    removed = [
+        ("PySide6/Qt/lib/QtQml.framework/Versions/A/QtQml",
+         "/venv/PySide6/Qt/lib/QtQml.framework/Versions/A/QtQml"),
+        ("PySide6/Qt/lib/QtPdf.framework/QtPdf", "Versions/Current/QtPdf"),
+        ("PySide6/Qt/lib/QtQuick.framework/Versions/Current", "A"),
+        ("QtQml", "PySide6/Qt/lib/QtQml.framework/Versions/A/QtQml"),
+        ("QtPdf", "PySide6/Qt/lib/QtPdf.framework/Versions/A/QtPdf"),
+        ("QtQuick", "PySide6/Qt/lib/QtQuick.framework/Versions/A/QtQuick"),
+        ("QtVirtualKeyboardQml", "PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A/x"),
+        ("Contents/Frameworks/QtQml", "Contents/Frameworks/QtQml"),
+        ("Contents/Resources/QtQml", "Contents/Resources/QtQml"),
+        ("Contents/Frameworks/QtPdf", "Contents/Frameworks/QtPdf"),
+        ("PySide6/Qt/translations/qt_fa.qm", "/venv/PySide6/Qt/translations/qt_fa.qm"),
+        ("PySide6/Qt/plugins/imageformats/libqpdf.dylib", "/venv/.../libqpdf.dylib"),
+    ]
+    for dest, src in removed:
+        assert drop(dest, src), f"filter keeps {(dest, src)}"
+    kept = [
+        ("PySide6/Qt/lib/QtSvg.framework/Versions/A/QtSvg", "/venv/.../QtSvg"),
+        ("PySide6/Qt/lib/QtDBus.framework/Versions/A/QtDBus", "/venv/.../QtDBus"),
+        ("PySide6/Qt/lib/QtWidgets.framework/Versions/A/QtWidgets", "/venv/.../QtWidgets"),
+        ("QtSvg", "/venv/PySide6/QtSvg.abi3.so"),
+        ("PySide6/Qt/plugins/imageformats/libqsvg.dylib", "/venv/.../libqsvg.dylib"),
+        ("PySide6/Qt/plugins/platforms/libqcocoa.dylib", "/venv/.../libqcocoa.dylib"),
+    ]
+    for dest, src in kept:
+        assert not drop(dest, src), f"filter drops {(dest, src)}"
