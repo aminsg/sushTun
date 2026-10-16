@@ -287,6 +287,29 @@ def test_type_and_subscription_hidden_by_default_transport_is_not(qapp):
     assert not panel.table.isColumnHidden(COL_TRANSPORT)
 
 
+def test_row_of_uid_lookup(qapp):
+    model = ProfileTableModel()
+    model.set_profiles([A, B, C], "a")
+    assert model.row_of_uid("a") == 0
+    assert model.row_of_uid("b") == 1
+    assert model.row_of_uid("c") == 2
+    assert model.row_of_uid("nonexistent") is None
+    model.set_profiles([C, A], "c")
+    assert model.row_of_uid("c") == 0
+    assert model.row_of_uid("a") == 1
+    assert model.row_of_uid("b") is None
+
+
+def test_row_of_uid_duplicate_uids_first_wins(qapp):
+    dup1 = Profile(name="First", uid="dup", address="1.1.1.1", port=443, id="u1")
+    dup2 = Profile(name="Second", uid="dup", address="2.2.2.2", port=443, id="u2")
+    model = ProfileTableModel()
+    model.set_profiles([dup1, dup2], "dup")
+    assert model.row_of_uid("dup") == 0
+
+
+
+
 def test_header_menu_toggles_an_optional_column(qapp):
     panel = ProfilePanel()
     menu = panel._build_header_menu()

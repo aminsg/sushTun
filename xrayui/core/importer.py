@@ -132,11 +132,12 @@ def parse_socks(link: str) -> Profile:
         security="none",
     )
 
-def _std_query_fields(query: str) -> dict:
+def _std_query_fields(query: str, q: dict[str, str] | None = None) -> dict:
     """Transport/TLS query keys shared by vless, trojan and the std vmess://
     URI form -- everything that means the same thing regardless of which
     protocol's credential/userinfo carries the rest of the link."""
-    q = {k: v[0] for k, v in parse_qs(query).items()}
+    if q is None:
+        q = {k: v[0] for k, v in parse_qs(query).items()}
     network = q.get("type", "tcp") or "tcp"
     if network == "raw":  # v2rayN's wire alias for plain tcp
         network = "tcp"
@@ -144,15 +145,16 @@ def _std_query_fields(query: str) -> dict:
     if not path.startswith("/") and unquote(path).startswith("/"):
         path = unquote(path)
     extra = q.get("extra", "")
-    try:
-        json.loads(extra)
-    except (ValueError, RecursionError):
+    if extra:
         try:
-            json.loads(unquote(extra))
+            json.loads(extra)
         except (ValueError, RecursionError):
-            pass
-        else:
-            extra = unquote(extra)
+            try:
+                json.loads(unquote(extra))
+            except (ValueError, RecursionError):
+                pass
+            else:
+                extra = unquote(extra)
     insecure = (q.get("allowInsecure") or q.get("insecure") or "").strip().lower()
     return {
         "network": network,
@@ -181,8 +183,8 @@ def parse_vless(url: str) -> Profile:
     s = urlsplit(url.strip())
     if s.scheme != "vless" or not s.hostname:
         raise ValueError("not a vless:// link")
-    fields = _std_query_fields(s.query)
     q = {k: v[0] for k, v in parse_qs(s.query).items()}
+    fields = _std_query_fields(s.query, q=q)
     name = unquote(s.fragment) if s.fragment else (s.hostname or "")
     return Profile(
         name=name or s.hostname,
@@ -200,7 +202,8 @@ def parse_trojan(url: str) -> Profile:
     s = urlsplit(url.strip())
     if s.scheme != "trojan" or not s.hostname:
         raise ValueError("not a trojan:// link")
-    fields = _std_query_fields(s.query)
+    q = {k: v[0] for k, v in parse_qs(s.query).items()}
+    fields = _std_query_fields(s.query, q=q)
     name = unquote(s.fragment) if s.fragment else (s.hostname or "")
     return Profile(
         name=name or s.hostname,
@@ -217,7 +220,8 @@ def _parse_std_vmess(url: str) -> Profile:
     s = urlsplit(url)
     if s.scheme != "vmess" or not s.hostname or not s.username:
         raise ValueError("not a std vmess:// link")
-    fields = _std_query_fields(s.query)
+    q = {k: v[0] for k, v in parse_qs(s.query).items()}
+    fields = _std_query_fields(s.query, q=q)
     name = unquote(s.fragment) if s.fragment else (s.hostname or "")
     return Profile(
         name=name or s.hostname,
@@ -601,7 +605,8 @@ def parse_subscription(text: str) -> list[Profile]:
     profiles = []
     for item in data if isinstance(data, list) else [data]:
         try:
-            profiles.append(parse_json(json.dumps(item, ensure_ascii=False)))
+            if isinstance(item, dict):
+                profiles.append(_profile_from_json_dict(item))
         except (ValueError, TypeError, AttributeError, IndexError, OverflowError):
             continue
     return profiles
@@ -829,6 +834,21 @@ def _profile_from_config(cfg: dict) -> Profile:
     return _profile_from_vless_outbound(proxy)
 
 
+def _profile_from_json_dict(data: dict) -> Profile:
+    if "outbounds" in data:
+        p = _profile_from_config(data)
+    else:
+        # uid/sub_uid are this app's own internal ids (a file name and a
+        # subscription link), never part of a server's settings: keeping one
+        # from an imported file would let a config overwrite a stored profile
+        # or sign itself up to someone's subscription.
+        data = {k: v for k, v in data.items() if k not in ("uid", "sub_uid")}
+        p = Profile.from_dict(data)
+    if not p.is_valid():
+        raise ValueError("config has no address or credential for its protocol")
+    return p
+
+
 def parse_json(text: str) -> Profile:
     stripped = text.strip()
     if _looks_like_wg_conf(stripped):
@@ -837,20 +857,9 @@ def parse_json(text: str) -> Profile:
         data = json.loads(text)
     except RecursionError as e:
         raise ValueError("invalid JSON: too deeply nested") from e
-    if isinstance(data, dict) and "outbounds" in data:
-        p = _profile_from_config(data)
-    elif isinstance(data, dict):
-        # uid/sub_uid are this app's own internal ids (a file name and a
-        # subscription link), never part of a server's settings: keeping one
-        # from an imported file would let a config overwrite a stored profile
-        # or sign itself up to someone's subscription.
-        data = {k: v for k, v in data.items() if k not in ("uid", "sub_uid")}
-        p = Profile.from_dict(data)
-    else:
+    if not isinstance(data, dict):
         raise ValueError("unsupported JSON shape")
-    if not p.is_valid():
-        raise ValueError("config has no address or credential for its protocol")
-    return p
+    return _profile_from_json_dict(data)
 
 
 def parse_qr(image_path: str) -> list[Profile]:

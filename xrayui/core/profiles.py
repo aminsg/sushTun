@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from dataclasses import MISSING, asdict, dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 
 from .. import paths
 
@@ -36,7 +36,7 @@ def normalize_pcs(raw: str) -> str:
     Applied at every point a pcs value enters the app (import, editor
     save, render) since any of them could be the one place a stray link
     format or a hand-edited profile slipped through."""
-    return re.sub(r"[:\s]", "", raw or "").lower()
+    return "".join((raw or "").replace(":", "").split()).lower()
 
 
 def valid_pcs(raw: str) -> bool:
@@ -111,17 +111,18 @@ class Profile:
         # one null name used to take the whole server list down with it. A
         # value of the wrong type keeps the field's default instead.
         clean = {}
-        for f in fields(cls):
-            if f.name not in data:
+        for name, default in _PROFILE_FIELDS:
+            if name not in data:
                 continue
-            value, default = data[f.name], f.default
+            value = data[name]
             if default is not MISSING and default is not None and not _fits(default, value):
                 continue
-            clean[f.name] = value
+            clean[name] = value
         return cls(**clean)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = self.__dict__
+        return {k: d[k] for k in _PROFILE_FIELD_NAMES}
 
     @property
     def endpoint(self) -> str:
@@ -151,6 +152,10 @@ class Profile:
         if self.protocol == "shadowsocks" and not self.ss_method:
             return False
         return True
+
+
+_PROFILE_FIELDS = tuple((f.name, f.default) for f in fields(Profile))
+_PROFILE_FIELD_NAMES = tuple(f.name for f in fields(Profile))
 
 
 class ProfileStore:

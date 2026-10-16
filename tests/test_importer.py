@@ -309,6 +309,43 @@ def test_parse_shadowsocks_obfs_local_http():
     assert p.host == "cdn.k.example.com"
 
 
+def test_parse_subscription_and_query_equivalence():
+    # Equivalence test pinning parse_subscription on json arrays, single objects, and query parsing
+    vless_link = (
+        "vless://user-uuid@example.com:443?type=ws&security=tls&sni=sni.example.com"
+        "&path=%2Fws&encryption=none#ServerName"
+    )
+    p_link = importer.parse_vless(vless_link)
+    assert p_link.address == "example.com"
+    assert p_link.port == 443
+    assert p_link.path == "/ws"
+    assert p_link.name == "ServerName"
+    assert p_link.encryption == "none"
+
+    json_sub = json.dumps([
+        {"name": "S1", "protocol": "vless", "address": "1.1.1.1", "port": 443, "id": "id1"},
+        {"name": "S2", "protocol": "trojan", "address": "2.2.2.2", "port": 443, "id": "pass2"},
+        {"invalid": "no address or credential"},
+    ])
+    profiles = importer.parse_subscription(json_sub)
+    assert len(profiles) == 2
+    assert profiles[0].name == "S1" and profiles[0].address == "1.1.1.1"
+    assert profiles[1].name == "S2" and profiles[1].address == "2.2.2.2"
+
+
+def test_parse_subscription_list_skips_string_items():
+    # A JSON array containing string items must yield no profiles for those items
+    json_sub = json.dumps([
+        '{"name": "S1", "protocol": "vless", "address": "1.1.1.1", "port": 443, "id": "id1"}',
+        {"name": "S2", "protocol": "trojan", "address": "2.2.2.2", "port": 443, "id": "pass2"},
+    ])
+    profiles = importer.parse_subscription(json_sub)
+    assert len(profiles) == 1
+    assert profiles[0].name == "S2"
+
+
+
+
 def test_parse_shadowsocks_simple_obfs_typo_is_treated_as_obfs_local():
     userinfo = base64.urlsafe_b64encode(b"aes-256-gcm:sspass").decode().rstrip("=")
     link = (f"ss://{userinfo}@k.example.com:8388"

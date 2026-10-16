@@ -23,15 +23,21 @@ Fetch = Callable[[str], str]
 def _ci_get(d: dict, *names: str, default=None):
     """Case-insensitive lookup: v2rayN writes "Remarks"/"RuleSet" in
     templates but "remarks"/"outboundTag" in its rule samples."""
+    for name in names:
+        if name in d:
+            return d[name]
     lower = {k.lower(): v for k, v in d.items()}
     for name in names:
-        if name.lower() in lower:
-            return lower[name.lower()]
+        low = name.lower()
+        if low in lower:
+            return lower[low]
     return default
 
 
 def _rule_from_dict(d: dict) -> dict | None:
-    outbound = _ci_get(d, "outboundTag", "outbound", default="proxy")
+    # Lowercase keys once per rule for fast case-insensitive lookup.
+    lower = {k.lower(): v for k, v in d.items()}
+    outbound = lower.get("outboundtag", lower.get("outbound", "proxy"))
     if outbound not in _OUTBOUNDS:
         return None
     # Same normalization convert_user_rule applies at build time (a list
@@ -40,15 +46,15 @@ def _rule_from_dict(d: dict) -> dict | None:
     # rule the UI or build_rules can't safely handle is exactly the kind of
     # thing that must never reach Xray.
     return {
-        "remarks": routing._coerce_str(_ci_get(d, "remarks", default="")),
-        "enabled": bool(_ci_get(d, "enabled", default=True)),
+        "remarks": routing._coerce_str(lower.get("remarks", "")),
+        "enabled": bool(lower.get("enabled", True)),
         "outbound": outbound,
-        "domain": routing._coerce_str_list(_ci_get(d, "domain", default=[])),
-        "ip": routing._coerce_str_list(_ci_get(d, "ip", default=[])),
-        "port": routing._sanitize_port(_ci_get(d, "port", default="")),
-        "network": routing._sanitize_network(_ci_get(d, "network", default="")),
-        "protocol": routing._coerce_str_list(_ci_get(d, "protocol", default=[])),
-        "process": routing._coerce_str_list(_ci_get(d, "process", default=[])),
+        "domain": routing._coerce_str_list(lower.get("domain", [])),
+        "ip": routing._coerce_str_list(lower.get("ip", [])),
+        "port": routing._sanitize_port(lower.get("port", "")),
+        "network": routing._sanitize_network(lower.get("network", "")),
+        "protocol": routing._coerce_str_list(lower.get("protocol", [])),
+        "process": routing._coerce_str_list(lower.get("process", [])),
     }
 
 

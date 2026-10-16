@@ -109,3 +109,39 @@ def test_imported_profile_cannot_overwrite_an_existing_uid(tmp_path, monkeypatch
     again = store.get(victim.uid)
     assert again is not None and again.address == "real.example"
     assert again.name == "Victim"
+
+
+def test_profile_dict_serialization_equivalence():
+    from dataclasses import asdict
+
+    # Verify to_dict matches asdict across various profiles
+    p_default = Profile()
+    assert p_default.to_dict() == asdict(p_default)
+
+    p_custom = Profile(
+        name="Custom", protocol="hysteria2", address="1.2.3.4", port=8443,
+        id="pass", allow_insecure=True, hy2_up_mbps=100, hy2_down_mbps=200,
+        hy2_ports="20000-30000", uid="test-uid-123",
+    )
+    assert p_custom.to_dict() == asdict(p_custom)
+
+    # Verify from_dict type safety and filtering
+    raw = {
+        "name": "Imported",
+        "port": "not-an-int",  # invalid type for port: should keep default 443
+        "allow_insecure": "not-a-bool",  # invalid type: should keep default False
+        "unknown_field": "dropped",
+        "address": "example.com",
+    }
+    p_loaded = Profile.from_dict(raw)
+    assert p_loaded.name == "Imported"
+    assert p_loaded.address == "example.com"
+    assert p_loaded.port == 443
+    assert p_loaded.allow_insecure is False
+    assert not hasattr(p_loaded, "unknown_field")
+
+
+def test_normalize_pcs_drops_all_unicode_whitespace():
+    assert profiles_mod.normalize_pcs("ab:cd\x0bef\xa0gh ") == "abcdefgh"
+
+
