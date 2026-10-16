@@ -137,10 +137,18 @@ class Connection:
 
     def _fail_connect(self, server_ip: str, reason: str) -> None:
         """Tear down a half-built connection, then report why it failed."""
-        self.tun2socks.stop()
-        self.xray.stop()
-        network.remove_routes(server_ip)
-        paths.runtime_config().unlink(missing_ok=True)
+        # Each step runs even when the one before raised: a hung bridge must
+        # not leave xray running with the server route still pinned.
+        for step in (self.tun2socks.stop, self.xray.stop,
+                     lambda: network.remove_routes(server_ip)):
+            try:
+                step()
+            except Exception as exc:
+                self._log(f"WARNING: teardown operation failed: {exc}")
+        try:
+            paths.runtime_config().unlink(missing_ok=True)
+        except OSError as exc:
+            self._log(f"WARNING: teardown operation failed: {exc}")
         raise ConnectError(reason)
 
     def _start_xray(self, cfg_path: Path, server_ip: str) -> None:
