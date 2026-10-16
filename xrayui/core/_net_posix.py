@@ -7,6 +7,7 @@ routes and DNS below target whichever device the connect path brought up.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import shutil
 import subprocess
@@ -32,19 +33,34 @@ TUN_DNS = "172.19.0.1"
 
 
 # -- interface detection ---------------------------------------------------
+def _loads_list(text: str) -> list:
+    # `ip -j` always speaks JSON, but a wrapper script or an error page may
+    # not: malformed output means "no usable answer", never a traceback.
+    try:
+        data = json.loads(text or "[]")
+    except ValueError:
+        return []
+    return data if isinstance(data, list) else []
+
+
 def _link_types() -> dict[str, str]:
-    links = json.loads(proc.run(["ip", "-j", "link", "show"]).stdout or "[]")
-    return {link.get("ifname"): link.get("link_type", "") for link in links}
+    links = _loads_list(proc.run(["ip", "-j", "link", "show"]).stdout)
+    return {link.get("ifname"): link.get("link_type", "") for link in links
+            if isinstance(link, dict)}
 
 
 def _linux_detect() -> Interface | None:
-    routes = json.loads(proc.run(["ip", "-j", "route", "show", "default"]).stdout or "[]")
+    routes = _loads_list(proc.run(["ip", "-j", "route", "show", "default"]).stdout)
     candidates = []
     for route in routes:
+        if not isinstance(route, dict):
+            continue
         if {"dead", "linkdown"}.intersection(route.get("flags", [])):
             continue
         # Multipath routes keep the device and gateway on each nexthop.
         for hop in route.get("nexthops", [route]):
+            if not isinstance(hop, dict):
+                continue
             if {"dead", "linkdown"}.intersection(hop.get("flags", [])):
                 continue
             if hop.get("dev") and hop["dev"] != TUN_NAME and hop.get("gateway"):
@@ -62,9 +78,13 @@ def _linux_detect() -> Interface | None:
     r = min(physical or routes, key=lambda route: route.get("metric", 0))
     dev, gw = r["dev"], r["gateway"]
     ip = ""
-    addrs = json.loads(proc.run(["ip", "-j", "-4", "addr", "show", "dev", dev]).stdout or "[]")
+    addrs = _loads_list(proc.run(["ip", "-j", "-4", "addr", "show", "dev", dev]).stdout)
     for entry in addrs:
+        if not isinstance(entry, dict):
+            continue
         for info in entry.get("addr_info", []):
+            if not isinstance(info, dict):
+                continue
             if info.get("family") == "inet":
                 ip = info["local"]
                 break
@@ -126,12 +146,21 @@ def dns_target_exists(alias: str, state: DnsState) -> bool | None:
         return None
 
 
+def _is_ip(word: str) -> bool:
+    # `networksetup` reports "no servers" as a sentence in the system
+    # language; only real addresses may become a DNS backup.
+    try:
+        ipaddress.ip_address(word)
+    except ValueError:
+        return False
+    return True
+
+
 def backup_dns(alias: str) -> DnsState:
     if IS_MAC:
         service = mac_service_name(alias) or ""
-        current = proc.run(["networksetup", "-getdnsservers", service]).stdout.split()
-        servers = [] if (not current or "aren't" in " ".join(current)) else current
-        servers = [s for s in servers if s != "127.0.0.1"]
+        words = proc.run(["networksetup", "-getdnsservers", service]).stdout.split()
+        servers = [w for w in words if _is_ip(w) and w != "127.0.0.1"]
         return DnsState(mode="MACOS", servers=[service, *servers])
     if _resolved_active():
         # resolvectl revert restores the link wholesale, so nothing to record.
@@ -147,13 +176,12 @@ def _run_best_effort(cmd: list[str]) -> None:
     """A teardown delete that must never stall disconnect.
 
     Route deletes are best-effort by design (deleting a route whose device is
-    already gone fails, and that is fine). A hung helper used to stall the
-    whole disconnect with no bound; now it gives up after a generous timeout
-    instead. Anything else still raises as before.
+    already gone fails, and that is fine). A hung or missing helper used to
+    stall or break the whole disconnect; now it gives up quietly instead.
     """
     try:
         proc.run(cmd, timeout=10)
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, OSError):
         pass
 
 
@@ -531,9 +559,10 @@ def wait_for_tun(name: str = TUN_NAME, timeout: float = 30.0,
         return None
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        links = json.loads(proc.run(["ip", "-j", "link", "show", name]).stdout or "[]")
+        links = _loads_list(proc.run(["ip", "-j", "link", "show", name]).stdout)
         if links:
-            return links[0].get("ifindex", 0)
+            index = links[0].get("ifindex", 0) if isinstance(links[0], dict) else 0
+            return index
         if alive is not None and not alive():
             return None
         time.sleep(1.0)

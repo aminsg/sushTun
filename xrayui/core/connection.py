@@ -125,7 +125,11 @@ class Connection:
                 "disconnect it first; two full tunnels cannot share the default route"
             )
 
-        server_ip = _resolve(profile.address)
+        try:
+            server_ip = _resolve(profile.address)
+        except OSError as exc:
+            # A dead DNS or an IPv6-only name is a bad address, not a crash.
+            raise ConnectError(f"could not resolve {profile.address}: {exc}") from exc
         self._log("Backing up DNS...")
         parked = self.state.pending().get(iface.alias)
         dns = parked.dns if parked else network.backup_dns(iface.alias)
@@ -137,11 +141,34 @@ class Connection:
 
     def _fail_connect(self, server_ip: str, reason: str) -> None:
         """Tear down a half-built connection, then report why it failed."""
-        self.tun2socks.stop()
-        self.xray.stop()
-        network.remove_routes(server_ip)
-        paths.runtime_config().unlink(missing_ok=True)
+        # Each step runs even when the one before raised: a hung bridge must
+        # not leave xray running with the server route still pinned.
+        for step in (self.tun2socks.stop, self.xray.stop,
+                     lambda: network.remove_routes(server_ip)):
+            try:
+                step()
+            except Exception as exc:
+                self._log(f"WARNING: teardown operation failed: {exc}")
+        try:
+            paths.runtime_config().unlink(missing_ok=True)
+        except OSError as exc:
+            self._log(f"WARNING: teardown operation failed: {exc}")
+        # A failure after state.save() must not leave a stale "connected".
+        self.state.clear()
         raise ConnectError(reason)
+
+    def _dns_rollback(self, alias: str, dns) -> None:
+        """Put the pre-connect DNS back after a failed hijack, best effort."""
+        # The hijack may have half-applied before raising; the backup in
+        # state/ is wiped below, so a failed rollback stays parked instead.
+        try:
+            restored = network.restore_dns(alias, dns)
+        except Exception as exc:
+            restored = False
+            self._log(f"WARNING: DNS rollback failed: {exc}")
+        if not restored:
+            self.state.save_pending(alias, dns)
+            self._log("WARNING: DNS rollback failed; backup saved for later recovery.")
 
     def _start_xray(self, cfg_path: Path, server_ip: str) -> None:
         """Turn a failed binary launch into a connect error after cleanup."""
@@ -261,7 +288,13 @@ class Connection:
         except Exception as exc:
             self._log(f"Boot restore task not registered: {exc}")
         self._log("Routing DNS and traffic through the tunnel...")
-        if network.set_dns_loopback(iface.alias) is False:
+        try:
+            dns_ok = network.set_dns_loopback(iface.alias)
+        except OSError as exc:
+            self._dns_rollback(iface.alias, dns)
+            self._fail_connect(server_ip, f"Could not route DNS through the tunnel: {exc}")
+            return  # _fail_connect always raises; kept for readers
+        if dns_ok is False:
             self._log("WARNING: DNS could not be routed through the tunnel — "
                       "lookups will leave unencrypted via the local network.")
         self._owned = True
@@ -439,7 +472,14 @@ class Connection:
         except Exception as exc:
             self._log(f"Boot restore task not registered: {exc}")
         self._log("Routing DNS and traffic through the tunnel...")
-        if network.set_dns_loopback(iface.alias) is False:
+        try:
+            dns_ok = network.set_dns_loopback(iface.alias)
+        except OSError as exc:
+            self._dns_rollback(iface.alias, dns)
+            self._restore()
+            raise ConnectError(
+                f"Could not route DNS through the tunnel: {exc}") from exc
+        if dns_ok is False:
             self._log("WARNING: DNS could not be routed through the tunnel — "
                       "lookups will leave unencrypted via the local network.")
         try:

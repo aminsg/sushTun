@@ -104,7 +104,10 @@ def _temporary(profiles, *, timeout, cancel, iface_alias, core_cfg):
                     process.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                    process.wait(timeout=3)
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        pass  # unreapable; the report is already recorded
 
 
 def _download(port, url, timeout, cancel):
