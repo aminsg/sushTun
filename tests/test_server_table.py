@@ -383,6 +383,7 @@ def test_sort_cache_matches_the_uncached_order_exactly(qapp):
 
     class _UncachedProxy(ProfileFilterProxy):
         def sort(self, column, order=Qt.AscendingOrder):
+            QSortFilterProxyModel.sort(self, -1, Qt.AscendingOrder)
             QSortFilterProxyModel.sort(self, column, order)  # skip the key cache
 
     names = ["Tokyo", "zone", "Tehran", "Berlin", "berlin", "",
@@ -451,3 +452,67 @@ def test_short_table_columns_still_fit_their_header_text(qapp):
                 f"column {col} ({title!r}) is {width}px, narrower than its header text")
     finally:
         panel.close()
+
+
+def test_sort_tie_order_and_unsort_preserve_store_order(qapp):
+    names = ["Alpha", "Beta", "Alpha", "Beta", "Same", "Same", "Gamma", "Gamma", "Delta", "Delta"]
+    profs = [
+        Profile(name=names[i % len(names)], address=f"h{i % 4}.example.com",
+                port=443, id="u", network="ws" if i % 2 else "tcp",
+                security="tls", uid=f"p{i:02d}", sub_uid=f"s{i % 3}")
+        for i in range(60)
+    ]
+    delays = [10.0, 10.0, 20.0, 20.0, None, None, 5.0, 5.0, None, 15.0]
+    results = {p.uid: {"delay_ms": delays[i % len(delays)], "error": None} for i, p in enumerate(profs)}
+
+    def visible_order(panel):
+        px = panel.proxy
+        return [panel.model.profile_at(px.mapToSource(px.index(r, 0)).row()).uid for r in range(px.rowCount())]
+
+    fresh = ProfilePanel()
+    fresh.set_profiles(profs, profs[0].uid)
+    fresh.set_results(results)
+    single_orders = {}
+    ncols = fresh.model.columnCount()
+    for col in range(ncols):
+        for order in (Qt.AscendingOrder, Qt.DescendingOrder):
+            fresh.set_profiles(profs, profs[0].uid)
+            fresh.table.sortByColumn(col, order)
+            single_orders[(col, order)] = visible_order(fresh)
+    fresh.close()
+    fresh.deleteLater()
+
+    panel = ProfilePanel()
+    panel.set_profiles(profs, profs[0].uid)
+    panel.set_results(results)
+    try:
+        for col_a in range(ncols):
+            for order_a in (Qt.AscendingOrder, Qt.DescendingOrder):
+                for col_b in range(ncols):
+                    for order_b in (Qt.AscendingOrder, Qt.DescendingOrder):
+                        panel.table.sortByColumn(col_a, order_a)
+                        panel.table.sortByColumn(col_b, order_b)
+                        assert visible_order(panel) == single_orders[(col_b, order_b)], (
+                            f"chained sort ({col_a}, {order_a}) then ({col_b}, {order_b}) differed from single sort"
+                        )
+
+        panel.table.sortByColumn(COL_DELAY, Qt.AscendingOrder)
+        panel.update_result("p04", 12.0, None)
+        order_after_update = visible_order(panel)
+
+        updated_results = dict(results)
+        updated_results["p04"] = {"delay_ms": 12.0, "error": None}
+        fresh_updated = ProfilePanel()
+        fresh_updated.set_profiles(profs, profs[0].uid)
+        fresh_updated.set_results(updated_results)
+        fresh_updated.table.sortByColumn(COL_DELAY, Qt.AscendingOrder)
+        fresh_order_updated = visible_order(fresh_updated)
+        fresh_updated.close()
+        fresh_updated.deleteLater()
+        assert order_after_update == fresh_order_updated
+
+        panel.table.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
+        assert visible_order(panel) == [p.uid for p in profs]
+    finally:
+        panel.close()
+        panel.deleteLater()

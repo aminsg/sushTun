@@ -89,6 +89,8 @@ class ProfileTableModel(QAbstractTableModel):
     def __init__(self) -> None:
         super().__init__()
         self._profiles: list[Profile] = []
+        self._store_order: list[Profile] = []
+        self._store_to_row: list[int] = []
         self._row_by_uid: dict[str, int] = {}
         self._active_uid: str | None = None
         self._results: dict[str, dict] = {}
@@ -103,21 +105,27 @@ class ProfileTableModel(QAbstractTableModel):
 
     def set_profiles(self, profiles: list[Profile], active_uid: str | None) -> None:
         self.beginResetModel()
+        self._store_order = list(profiles)
         self._profiles = list(profiles)
+        self._store_to_row = list(range(len(profiles)))
         self._index_rows()
         self._active_uid = active_uid
         self.endResetModel()
 
     def apply_order(self, new_order: list[int]) -> None:
-        # Reorder rows in place: layoutChanged keeps selection and current index.
-        if len(new_order) != len(self._profiles):
+        # Permute source rows relative to store order while preserving selection.
+        if len(new_order) != len(self._store_order):
+            return
+        new_row_of_old = [0] * len(self._profiles)
+        for new_row, store_idx in enumerate(new_order):
+            old_row = self._store_to_row[store_idx]
+            new_row_of_old[old_row] = new_row
+        if new_row_of_old == list(range(len(self._profiles))):
             return
         self.layoutAboutToBeChanged.emit()
-        old = self._profiles
-        self._profiles = [old[i] for i in new_order]
-        new_row_of_old = [0] * len(old)
-        for new_row, old_row in enumerate(new_order):
-            new_row_of_old[old_row] = new_row
+        self._profiles = [self._store_order[i] for i in new_order]
+        for new_row, store_idx in enumerate(new_order):
+            self._store_to_row[store_idx] = new_row
         current = self.persistentIndexList()
         self.changePersistentIndexList(
             current,
@@ -227,11 +235,7 @@ class ProfileTableModel(QAbstractTableModel):
             return _column_help(section)
         return None
 
-    def data(self, index, role=Qt.DisplayRole):
-        if not index.isValid():
-            return None
-        p = self._profiles[index.row()]
-        col = index.column()
+    def data_for_profile(self, p: Profile, col: int, role: int = Qt.DisplayRole):
         result = self._results.get(p.uid) or {}
 
         if role == Qt.UserRole:
@@ -293,6 +297,14 @@ class ProfileTableModel(QAbstractTableModel):
 
         return None
 
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid():
+            return None
+        row = index.row()
+        if not (0 <= row < len(self._profiles)):
+            return None
+        return self.data_for_profile(self._profiles[row], index.column(), role)
+
 
 class ProfileFilterProxy(QSortFilterProxyModel):
     """Matches name or address (case-insensitive); sorts Delay numerically
@@ -327,6 +339,7 @@ class ProfileFilterProxy(QSortFilterProxyModel):
         # thousands of Python lessThan comparisons.
         if column < 0:
             self._sort_column = -1
+            self.reapply_sort()
             return
         self._sort_column = column
         self._sort_order = order
@@ -334,11 +347,14 @@ class ProfileFilterProxy(QSortFilterProxyModel):
             super().sort(column, order)
 
     def reapply_sort(self) -> bool:
-        if self._sort_column < 0:
-            return True
         model = self.sourceModel()
+        if model is None:
+            return True
+        if self._sort_column < 0:
+            model.apply_order(list(range(len(model._store_order))))
+            return True
         keys = self._snapshot_sort_keys(self._sort_column)
-        if keys is None or len(keys) != model.rowCount():
+        if keys is None or len(keys) != len(model._store_order):
             return False
         order = sorted(range(len(keys)), key=keys.__getitem__,
                        reverse=self._sort_order == Qt.DescendingOrder)
@@ -350,13 +366,13 @@ class ProfileFilterProxy(QSortFilterProxyModel):
         if model is None or column < 0:
             return None
         if column == COL_DELAY:
-            vals = [model.data(model.index(row, column), Qt.UserRole)
-                    for row in range(model.rowCount())]
+            vals = [model.data_for_profile(p, column, Qt.UserRole)
+                    for p in model._store_order]
             return [inf if v is None else v for v in vals]
         if self.sortRole() != Qt.DisplayRole:
             return None
-        texts = [model.data(model.index(row, column), Qt.DisplayRole)
-                 for row in range(model.rowCount())]
+        texts = [model.data_for_profile(p, column, Qt.DisplayRole)
+                 for p in model._store_order]
         if not all(isinstance(t, str) for t in texts):
             return None
         # QString orders by UTF-16 code units; compare UTF-16 bytes to match Qt order.
