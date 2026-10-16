@@ -141,3 +141,31 @@ def test_import_routing_items_with_empty_ruleset_imports_nothing():
     ]})
     sets, _skipped = routing_io.import_rules(text)
     assert [s["name"] for s in sets] == ["full"]
+
+
+def test_import_rules_varied_cases_and_defaults():
+    # Equivalence test pinning rule parsing across various casing and defaults
+    payload = json.dumps([
+        {"Remarks": "R1", "OutboundTag": "direct", "Domain": ["a.com"], "Enabled": False},
+        {"remarks": "R2", "outbound": "block", "IP": ["1.1.1.1"], "Port": 80, "Network": "tcp"},
+        {"remarks": "R3", "outboundTag": "proxy", "Protocol": ["http"], "Process": ["curl"]},
+        {"remarks": "R4", "outboundTag": "unknownTag"},
+    ])
+    sets, skipped = routing_io.import_rules(payload)
+    assert skipped == 1
+    assert len(sets) == 1
+    rules = sets[0]["rules"]
+    assert len(rules) == 3
+    assert rules[0] == {
+        "remarks": "R1", "enabled": False, "outbound": "direct",
+        "domain": ["a.com"], "ip": [], "port": "", "network": "", "protocol": [], "process": [],
+    }
+    assert rules[1] == {
+        "remarks": "R2", "enabled": True, "outbound": "block",
+        "domain": [], "ip": ["1.1.1.1"], "port": "80", "network": "tcp", "protocol": [], "process": [],
+    }
+    assert rules[2] == {
+        "remarks": "R3", "enabled": True, "outbound": "proxy",
+        "domain": [], "ip": [], "port": "", "network": "", "protocol": ["http"], "process": ["curl"],
+    }
+
