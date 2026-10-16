@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.10.2
+
+### New
+- **A server list that stays fast with thousands of servers.** Opening it, sorting, deleting and reloading took seconds with 2,000 servers; now each is well under a tenth of a second. Servers that tie in a sort always keep the order of the list, whatever you sorted by before.
+- **Faster imports.** Parsing links, JSON subscriptions and routing rule files is up to 2.5x quicker.
+
+### Fixed
+- **Dialogs no longer pile up in memory.** Every time you opened and closed Settings, DNS, Routing, Import or an editor, a hidden copy stayed behind until you quit.
+- **Safer imports.** A server file or subscription can no longer write outside the servers folder or overwrite another server, one broken entry in a subscription no longer fails the whole refresh, and a damaged settings file can no longer stop you from connecting.
+- **Connecting and disconnecting clean up more reliably.** If connecting fails while DNS is being changed, DNS is put back; every cleanup step still runs when another one fails; a missing Xray file or an address that does not resolve gives a clear message; and a stuck Xray can no longer hang a disconnect. On macOS the DNS backup no longer picks up messages written in the system language.
+- **Quitting while connected** no longer leaves the tunnel health check running.
+
+<!-- fa -->
+
+### چی اضافه شده
+- **لیست سرورها با هزاران سرور هم روون کار می‌کنه.** با ۲۰۰۰ سرور باز شدن، مرتب‌کردن، حذف و reload چند ثانیه طول می‌کشید، حالا هر کدوم کمتر از یک‌دهم ثانیه‌ست. سرورهایی که تو مرتب‌سازی مساوی‌ان همیشه به ترتیب خود لیست می‌مونن، مهم نیست قبلاً با چی مرتب کرده بودی.
+- **import سریع‌تر شد.** خوندن لینک، ساب‌اسکریپشن JSON و فایل قوانین routing تا ۲.۵ برابر سریع‌تره.
+
+### چی درست شده
+- **پنجره‌ها دیگه حافظه جمع نمی‌کنن.** هر بار تنظیمات، DNS، routing، import یا ویرایشگر رو باز و بسته می‌کردی، یه کپی مخفی تا موقع بستن برنامه می‌موند.
+- **import امن‌تر شد.** یه فایل سرور یا ساب‌اسکریپشن دیگه نمی‌تونه بیرون پوشه‌ی سرورها بنویسه یا یه سرور دیگه رو خراب کنه، یه ورودی خراب تو ساب‌اسکریپشن کل آپدیت رو خراب نمی‌کنه، و فایل تنظیمات خراب جلوی وصل شدن رو نمی‌گیره.
+- **قطع و وصل مطمئن‌تر شد.** اگه وسط عوض کردن DNS وصل شدن خراب بشه، DNS برمی‌گرده؛ هر مرحله‌ی پاک‌سازی حتی وقتی یکی دیگه خطا بده انجام می‌شه؛ اگه فایل Xray نباشه یا آدرس سرور resolve نشه پیام واضح می‌گیری؛ و Xrayـی که گیر کرده دیگه قطع شدن رو نمی‌خوابونه. تو مک بکاپ DNS دیگه پیام‌های به زبان سیستم رو جای آدرس برنمی‌داره.
+- **بستن برنامه وقتی وصلی** دیگه چک سلامت تونل رو روشن نمی‌ذاره.
+
 ## v0.10.1
 
 ### New
