@@ -16,6 +16,7 @@
 - **macOS: closing the window hides it instead of quitting, and the Dock brings it back.** The red button (or Cmd+W) now always hides the window while the tunnel keeps running — before, with no tray icon it quit the app and cut the tunnel. Clicking the Dock icon brings a hidden window back; quitting stays Cmd+Q or Quit.
 - **macOS: the menu-bar icon is back.** The administrator copy used to start outside your login session, so macOS kept its menu-bar icon (and, on the side, the Dock and the clipboard) away from it. It now starts inside your session — still with administrator rights — so the icon shows up as it should.
 - **A cleaner menu-bar icon when disconnected.** The idle icon used to shrink the whole colourful app tile into the menu bar, where it looked like a heavy dark square next to the system's simple monochrome icons. It is now a plain sushi-roll-with-chopsticks glyph that macOS tints itself for light and dark menu bars, like every other menu-bar icon; the connecting (amber) and unknown-country (green) badges and the connected flags are unchanged.
+- **Pasting share links together with a WireGuard config no longer loses the links.** If one paste held a WireGuard `.conf` and server links, only the WireGuard server was imported and the links were silently dropped; now everything in the paste is imported, and a broken config no longer takes the links down with it.
 
 <!-- fa -->
 
@@ -33,6 +34,7 @@
 - **مک: بستن پنجره دیگه برنامه رو نمی‌بنده، فقط قایمش می‌کنه و داک برش می‌گردونه.** دکمه‌ی قرمز (یا Cmd+W) حالا همیشه پنجره رو قایم می‌کنه و تونل وصل می‌مونه؛ قبلاً اگه آیکون tray نبود برنامه کلاً بسته می‌شد و تونل قطع می‌شد. رو آیکون داک که کلیک کنی پنجره برمی‌گرده؛ بستن کامل همون Cmd+Q یا Quit می‌مونه.
 - **مک: آیکون منو بار برگشت.** نسخه‌ی ادمین برنامه قبلاً بیرون از سشن لاگین تو اجرا می‌شد و macOS آیکون بالای صفحه (و کنارش داک و کلیپ‌بورد) رو ازش قایم می‌کرد. حالا تو همون سشن خودت بالا میاد — ولی هنوز با دسترسی ادمین — پس آیکون همون‌طور که باید دیده می‌شه.
 - **آیکون بالای صفحه وقتی وصلی نیستی تمیزتر شد.** قبلاً آیکون کل عکس رنگی برنامه رو کوچیک می‌کرد می‌ذاشت تو منو بار و کنار آیکون‌های ساده‌ی سیستم یه مربع تیره‌ی سنگین به نظر می‌رسید. حالا یه شکل ساده‌ی سوشی با چاپ‌استیکه که خود macOS تو حالت روشن و تیره رنگش می‌کنه، مثل بقیه‌ی آیکون‌های منو بار؛ نقطه‌های نارنجی موقع وصل شدن و سبز کشور نامعلوم و پرچم‌های موقع اتصال همون‌جوری موندن.
+- **اگه لینک سرور و کانفیگ وایرگارد رو با هم پیست کنی، لینک‌ها دیگه گم نمی‌شن.** قبلاً اگه تو یه پیست هم فایل `.conf` وایرگارد بود هم لینک سرورها، فقط وایرگارد import می‌شد و لینک‌ها بی‌صدا حذف می‌شدن؛ حالا همه‌چیزِ پیست import می‌شه، و کانفیگ خراب هم دیگه لینک‌ها رو با خودش نمی‌بره.
 
 ## v0.10.0
 
