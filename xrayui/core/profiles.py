@@ -13,7 +13,6 @@ from .. import paths
 SUBSCRIPTIONS_FILENAME = "subscriptions.json"
 
 _PCS_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
-_PCS_TRANSLATE = {ord(c): None for c in ": \t\r\n"}
 # An ML-DSA-65 public key is 1952 bytes: 2603 characters of unpadded base64url.
 _PQV_RE = re.compile(r"^[A-Za-z0-9_-]{2603}$")
 
@@ -25,7 +24,7 @@ def normalize_pcs(raw: str) -> str:
     Applied at every point a pcs value enters the app (import, editor
     save, render) since any of them could be the one place a stray link
     format or a hand-edited profile slipped through."""
-    return (raw or "").translate(_PCS_TRANSLATE).lower()
+    return "".join((raw or "").replace(":", "").split()).lower()
 
 
 def valid_pcs(raw: str) -> bool:

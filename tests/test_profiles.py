@@ -84,3 +84,8 @@ def test_profile_dict_serialization_equivalence():
     assert p_loaded.allow_insecure is False
     assert not hasattr(p_loaded, "unknown_field")
 
+
+def test_normalize_pcs_drops_all_unicode_whitespace():
+    assert profiles_mod.normalize_pcs("ab:cd\x0bef\xa0gh ") == "abcdefgh"
+
+
