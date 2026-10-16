@@ -32,19 +32,34 @@ TUN_DNS = "172.19.0.1"
 
 
 # -- interface detection ---------------------------------------------------
+def _loads_list(text: str) -> list:
+    # `ip -j` always speaks JSON, but a wrapper script or an error page may
+    # not: malformed output means "no usable answer", never a traceback.
+    try:
+        data = json.loads(text or "[]")
+    except ValueError:
+        return []
+    return data if isinstance(data, list) else []
+
+
 def _link_types() -> dict[str, str]:
-    links = json.loads(proc.run(["ip", "-j", "link", "show"]).stdout or "[]")
-    return {link.get("ifname"): link.get("link_type", "") for link in links}
+    links = _loads_list(proc.run(["ip", "-j", "link", "show"]).stdout)
+    return {link.get("ifname"): link.get("link_type", "") for link in links
+            if isinstance(link, dict)}
 
 
 def _linux_detect() -> Interface | None:
-    routes = json.loads(proc.run(["ip", "-j", "route", "show", "default"]).stdout or "[]")
+    routes = _loads_list(proc.run(["ip", "-j", "route", "show", "default"]).stdout)
     candidates = []
     for route in routes:
+        if not isinstance(route, dict):
+            continue
         if {"dead", "linkdown"}.intersection(route.get("flags", [])):
             continue
         # Multipath routes keep the device and gateway on each nexthop.
         for hop in route.get("nexthops", [route]):
+            if not isinstance(hop, dict):
+                continue
             if {"dead", "linkdown"}.intersection(hop.get("flags", [])):
                 continue
             if hop.get("dev") and hop["dev"] != TUN_NAME and hop.get("gateway"):
@@ -62,9 +77,13 @@ def _linux_detect() -> Interface | None:
     r = min(physical or routes, key=lambda route: route.get("metric", 0))
     dev, gw = r["dev"], r["gateway"]
     ip = ""
-    addrs = json.loads(proc.run(["ip", "-j", "-4", "addr", "show", "dev", dev]).stdout or "[]")
+    addrs = _loads_list(proc.run(["ip", "-j", "-4", "addr", "show", "dev", dev]).stdout)
     for entry in addrs:
+        if not isinstance(entry, dict):
+            continue
         for info in entry.get("addr_info", []):
+            if not isinstance(info, dict):
+                continue
             if info.get("family") == "inet":
                 ip = info["local"]
                 break
@@ -530,9 +549,10 @@ def wait_for_tun(name: str = TUN_NAME, timeout: float = 30.0,
         return None
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        links = json.loads(proc.run(["ip", "-j", "link", "show", name]).stdout or "[]")
+        links = _loads_list(proc.run(["ip", "-j", "link", "show", name]).stdout)
         if links:
-            return links[0].get("ifindex", 0)
+            index = links[0].get("ifindex", 0) if isinstance(links[0], dict) else 0
+            return index
         if alive is not None and not alive():
             return None
         time.sleep(1.0)

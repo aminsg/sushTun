@@ -122,3 +122,29 @@ def test_windows_remove_routes_never_raises_when_helpers_missing(win_net, monkey
 
     monkeypatch.setattr(win_net.proc, "run", missing)
     win_net.remove_routes("203.0.113.10")  # best effort: must not raise
+
+
+def test_linux_detect_returns_none_on_garbage_ip_json(monkeypatch):
+    import types
+
+    from xrayui.core import _net_posix as posix
+
+    def garbage(cmd, **kw):
+        return types.SimpleNamespace(returncode=0, stdout="<not json>")
+
+    monkeypatch.setattr(posix.proc, "run", garbage)
+    assert posix._linux_detect() is None  # odd output, not a traceback
+    assert posix._link_types() == {}
+
+
+def test_linux_wait_for_tun_ignores_garbage_ip_json(monkeypatch):
+    import types
+
+    from xrayui.core import _net_posix as posix
+
+    def garbage(cmd, **kw):
+        return types.SimpleNamespace(returncode=0, stdout="{oops")
+
+    monkeypatch.setattr(posix, "IS_MAC", False)
+    monkeypatch.setattr(posix.proc, "run", garbage)
+    assert posix.wait_for_tun(timeout=5, alive=lambda: False) is None
