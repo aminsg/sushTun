@@ -7,6 +7,7 @@ routes and DNS below target whichever device the connect path brought up.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import shutil
 import subprocess
@@ -145,12 +146,21 @@ def dns_target_exists(alias: str, state: DnsState) -> bool | None:
         return None
 
 
+def _is_ip(word: str) -> bool:
+    # `networksetup` reports "no servers" as a sentence in the system
+    # language; only real addresses may become a DNS backup.
+    try:
+        ipaddress.ip_address(word)
+    except ValueError:
+        return False
+    return True
+
+
 def backup_dns(alias: str) -> DnsState:
     if IS_MAC:
         service = mac_service_name(alias) or ""
-        current = proc.run(["networksetup", "-getdnsservers", service]).stdout.split()
-        servers = [] if (not current or "aren't" in " ".join(current)) else current
-        servers = [s for s in servers if s != "127.0.0.1"]
+        words = proc.run(["networksetup", "-getdnsservers", service]).stdout.split()
+        servers = [w for w in words if _is_ip(w) and w != "127.0.0.1"]
         return DnsState(mode="MACOS", servers=[service, *servers])
     if _resolved_active():
         # resolvectl revert restores the link wholesale, so nothing to record.

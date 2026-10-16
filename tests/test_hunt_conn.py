@@ -224,3 +224,39 @@ def test_check_config_reports_missing_binary_instead_of_raising(monkeypatch, tmp
     monkeypatch.setattr(paths, "xray_exe", lambda: tmp_path / "no-such-xray")
     reason = xraycheck.check_config("{}")
     assert isinstance(reason, str) and reason
+
+
+def _mac_dns(monkeypatch, dns_answer):
+    import types
+
+    from xrayui.core import _net_posix as posix
+
+    order = ("(1) Wi-Fi\n"
+             "Hardware Port: Wi-Fi, Device: en0)\n")
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(list(cmd))
+        if cmd[:1] == ["networksetup"] and "-getdnsservers" in cmd:
+            return types.SimpleNamespace(returncode=0, stdout=dns_answer)
+        return types.SimpleNamespace(returncode=0, stdout=order)
+
+    monkeypatch.setattr(posix, "IS_MAC", True)
+    monkeypatch.setattr(posix.proc, "run", fake_run)
+    return posix.backup_dns("en0")
+
+
+def test_macos_dns_backup_ignores_localized_empty_sentence(monkeypatch):
+    from xrayui.core._net_common import DnsState
+
+    # German macOS answers the "no servers" case with a sentence, not IPs.
+    backup = _mac_dns(monkeypatch, "Es sind keine DNS-Server konfiguriert\n")
+    assert backup == DnsState(mode="MACOS", servers=["Wi-Fi"])
+
+
+def test_macos_dns_backup_keeps_real_servers(monkeypatch):
+    from xrayui.core._net_common import DnsState
+
+    backup = _mac_dns(monkeypatch, "8.8.8.8\n2001:4860:4860::8888\n")
+    assert backup == DnsState(mode="MACOS",
+                              servers=["Wi-Fi", "8.8.8.8", "2001:4860:4860::8888"])
