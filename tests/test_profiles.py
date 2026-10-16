@@ -53,3 +53,41 @@ def test_uid_matches_filename(tmp_path, monkeypatch):
 
     p = store.get("fileuid")
     assert p.uid == "fileuid"
+
+
+def test_save_never_writes_outside_the_profiles_dir(tmp_path, monkeypatch):
+    # A profile imported from JSON (importer.parse_json -> Profile.from_dict)
+    # carries whatever "uid" the JSON had. Saved as the filename, a uid like
+    # "../evil" or an absolute path escapes profiles/ and writes anywhere the
+    # (often elevated) process can -- so save must never trust it.
+    store = _store(tmp_path, monkeypatch)
+    p = Profile(name="evil", address="x", port=1, id="y")
+    p.uid = "../evil"
+
+    saved = store.save(p)
+
+    assert not (tmp_path / "evil.json").exists()
+    assert saved.uid != "../evil"
+    assert [f.name for f in store.dir.glob("*.json")] == [f"{saved.uid}.json"]
+
+
+def test_save_never_writes_an_absolute_path(tmp_path, monkeypatch):
+    store = _store(tmp_path, monkeypatch)
+    p = Profile(name="evil", address="x", port=1, id="y")
+    p.uid = str(tmp_path / "outside")
+
+    saved = store.save(p)
+
+    assert not (tmp_path / "outside.json").exists()
+    assert (store.dir / f"{saved.uid}.json").exists()
+
+
+def test_get_and_delete_ignore_a_uid_that_escapes_the_profiles_dir(tmp_path, monkeypatch):
+    store = _store(tmp_path, monkeypatch)
+    store.dir.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+
+    assert store.get("../outside") is None
+    store.delete("../outside")
+    assert outside.exists()
