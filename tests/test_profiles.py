@@ -91,3 +91,21 @@ def test_get_and_delete_ignore_a_uid_that_escapes_the_profiles_dir(tmp_path, mon
     assert store.get("../outside") is None
     store.delete("../outside")
     assert outside.exists()
+
+
+def test_imported_profile_cannot_overwrite_an_existing_uid(tmp_path, monkeypatch):
+    # A uid is this app's own filename, not server data. A config (or a
+    # subscription entry) that carries someone else's -- even a valid-looking
+    # -- uid must not overwrite that stored profile when it is imported.
+    from xrayui.core import importer
+
+    store = _store(tmp_path, monkeypatch)
+    victim = store.save(Profile(name="Victim", address="real.example", port=443, id="v"))
+    hostile = json.dumps({"protocol": "vless", "address": "evil.example",
+                          "port": 443, "id": "e", "uid": victim.uid})
+
+    store.save(importer.parse_json(hostile))
+
+    again = store.get(victim.uid)
+    assert again is not None and again.address == "real.example"
+    assert again.name == "Victim"

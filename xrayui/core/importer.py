@@ -827,6 +827,11 @@ def parse_json(text: str) -> Profile:
     if isinstance(data, dict) and "outbounds" in data:
         p = _profile_from_config(data)
     elif isinstance(data, dict):
+        # uid/sub_uid are this app's own internal ids (a file name and a
+        # subscription link), never part of a server's settings: keeping one
+        # from an imported file would let a config overwrite a stored profile
+        # or sign itself up to someone's subscription.
+        data = {k: v for k, v in data.items() if k not in ("uid", "sub_uid")}
         p = Profile.from_dict(data)
     else:
         raise ValueError("unsupported JSON shape")

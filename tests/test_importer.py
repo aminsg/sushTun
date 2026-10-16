@@ -45,6 +45,17 @@ def test_parse_reality_params():
     assert p.flow == "xtls-rprx-vision"
 
 
+def test_parse_json_ignores_an_embedded_uid():
+    # uid is this app's internal file name, not part of the server data. A
+    # config carrying one must not make the imported profile reuse it, or
+    # importing would silently overwrite the stored profile that owns it.
+    cfg = {"protocol": "vless", "address": "a.example.com", "port": 443,
+           "id": "u", "uid": "ab" * 16}
+    p = importer.parse_json(json.dumps(cfg))
+    assert p.uid != "ab" * 16
+    assert len(p.uid) == 32
+
+
 def test_parse_json_full_config():
     cfg = {
         "outbounds": [
