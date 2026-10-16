@@ -89,6 +89,7 @@ class ProfileTableModel(QAbstractTableModel):
     def __init__(self) -> None:
         super().__init__()
         self._profiles: list[Profile] = []
+        self._row_by_uid: dict[str, int] = {}
         self._active_uid: str | None = None
         self._results: dict[str, dict] = {}
         self._sub_names: dict[str, str] = {}
@@ -97,6 +98,7 @@ class ProfileTableModel(QAbstractTableModel):
     def set_profiles(self, profiles: list[Profile], active_uid: str | None) -> None:
         self.beginResetModel()
         self._profiles = list(profiles)
+        self._row_by_uid = {p.uid: i for i, p in enumerate(self._profiles)}
         self._active_uid = active_uid
         self.endResetModel()
 
@@ -162,10 +164,7 @@ class ProfileTableModel(QAbstractTableModel):
         return self._profiles[row] if 0 <= row < len(self._profiles) else None
 
     def row_of_uid(self, uid: str) -> int | None:
-        for i, p in enumerate(self._profiles):
-            if p.uid == uid:
-                return i
-        return None
+        return self._row_by_uid.get(uid)
 
     def _delay_value(self, uid: str) -> float | None:
         r = self._results.get(uid)
