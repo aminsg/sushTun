@@ -86,6 +86,19 @@ def test_other_panel_config_formats(body):
     assert profiles[0].address == "example.org"
 
 
+def test_a_config_with_a_malformed_outbound_is_skipped_not_fatal():
+    # A panel that wraps a single object where Xray expects a list (vnext,
+    # servers, peers) made the per-entry index raise KeyError, which escaped
+    # parse_subscription and failed the whole refresh instead of skipping
+    # that one entry.
+    good = {"outbounds": [{"protocol": "trojan", "tag": "proxy", "settings": {
+        "servers": [{"address": "example.org", "port": 443, "password": "secret"}]}}]}
+    bad = {"outbounds": [{"protocol": "vless", "tag": "proxy",
+                          "settings": {"vnext": {"a": 1}}}]}
+    profiles = importer.parse_subscription(json.dumps([bad, good]))
+    assert [p.address for p in profiles] == ["example.org"]
+
+
 def test_json_profile_body():
     profile = Profile(protocol="trojan", address="example.org", id="secret")
     assert importer.parse_subscription(json.dumps(profile.to_dict()))[0].id == "secret"

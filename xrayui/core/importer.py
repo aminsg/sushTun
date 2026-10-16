@@ -607,9 +607,19 @@ def parse_subscription(text: str) -> list[Profile]:
     return profiles
 
 
+def _first_dict(value) -> dict:
+    # Xray lists a single object here (vnext, servers, peers, users), but a
+    # panel may wrap it as an object; indexing that raised KeyError, which
+    # aborted a whole subscription instead of skipping the one bad entry. A
+    # wrong shape now reads as empty and fails is_valid() like any other.
+    if isinstance(value, list) and value and isinstance(value[0], dict):
+        return value[0]
+    return {}
+
+
 def _profile_from_wg_outbound(proxy: dict) -> Profile:
     settings = proxy.get("settings") or {}
-    peer = (settings.get("peers") or [{}])[0]
+    peer = _first_dict(settings.get("peers"))
     host, port = _split_endpoint(str(peer.get("endpoint", "")))
     addrs = settings.get("address") or []
     if isinstance(addrs, str):
@@ -703,8 +713,8 @@ def _stream_fields(stream: dict) -> dict:
 
 
 def _profile_from_vless_outbound(proxy: dict) -> Profile:
-    vnext = proxy.get("settings", {}).get("vnext", [{}])[0]
-    user = (vnext.get("users") or [{}])[0]
+    vnext = _first_dict(proxy.get("settings", {}).get("vnext"))
+    user = _first_dict(vnext.get("users"))
     return Profile(
         name=vnext.get("address", "imported"),
         protocol=proxy.get("protocol", "vless"),
@@ -718,8 +728,8 @@ def _profile_from_vless_outbound(proxy: dict) -> Profile:
 
 
 def _profile_from_vmess_outbound(proxy: dict) -> Profile:
-    vnext = proxy.get("settings", {}).get("vnext", [{}])[0]
-    user = (vnext.get("users") or [{}])[0]
+    vnext = _first_dict(proxy.get("settings", {}).get("vnext"))
+    user = _first_dict(vnext.get("users"))
     return Profile(
         name=vnext.get("address", "imported"),
         protocol="vmess",
@@ -732,7 +742,7 @@ def _profile_from_vmess_outbound(proxy: dict) -> Profile:
 
 
 def _profile_from_trojan_outbound(proxy: dict) -> Profile:
-    server = (proxy.get("settings", {}).get("servers") or [{}])[0]
+    server = _first_dict(proxy.get("settings", {}).get("servers"))
     return Profile(
         name=server.get("address", "imported"),
         protocol="trojan",
@@ -744,7 +754,7 @@ def _profile_from_trojan_outbound(proxy: dict) -> Profile:
 
 
 def _profile_from_ss_outbound(proxy: dict) -> Profile:
-    server = (proxy.get("settings", {}).get("servers") or [{}])[0]
+    server = _first_dict(proxy.get("settings", {}).get("servers"))
     return Profile(
         name=server.get("address", "imported"),
         protocol="shadowsocks",
@@ -795,10 +805,13 @@ _KNOWN_PROTOCOLS = ("vless", "vmess", "trojan", "shadowsocks", "hysteria", "wire
 
 def _profile_from_config(cfg: dict) -> Profile:
     outbounds = cfg.get("outbounds", [])
-    proxy = next((o for o in outbounds if o.get("tag") == "proxy"), None)
+    if not isinstance(outbounds, list):
+        outbounds = []  # a panel may give an object here; skip, never abort
+    proxy = next((o for o in outbounds if isinstance(o, dict) and o.get("tag") == "proxy"), None)
     if proxy is None:
         proxy = next(
-            (o for o in outbounds if o.get("protocol") in _KNOWN_PROTOCOLS), None,
+            (o for o in outbounds if isinstance(o, dict)
+             and o.get("protocol") in _KNOWN_PROTOCOLS), None,
         )
     if proxy is None:
         raise ValueError("no proxy outbound in config")
