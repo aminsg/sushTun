@@ -116,6 +116,17 @@ def test_export_then_import_round_trips_rule_content():
     assert got[1]["protocol"] == ["http"]
 
 
+def test_export_skips_a_non_dict_rule():
+    # build_rules already skips a rule that isn't an object (a hand-edited
+    # set can hold one); export used to raise AttributeError on it, so the
+    # page's Export button did nothing and logged a traceback.
+    exported = routing_io.export_rules({"rules": [
+        "junk",
+        {"remarks": "ok", "outbound": "direct", "domain": ["a.com"]},
+    ]})
+    assert [r["outboundTag"] for r in exported] == ["direct"]
+
+
 def test_import_invalid_json_returns_nothing():
     sets, skipped = routing_io.import_rules("not json at all")
     assert sets == []

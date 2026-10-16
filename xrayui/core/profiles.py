@@ -15,6 +15,18 @@ SUBSCRIPTIONS_FILENAME = "subscriptions.json"
 _PCS_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 # An ML-DSA-65 public key is 1952 bytes: 2603 characters of unpadded base64url.
 _PQV_RE = re.compile(r"^[A-Za-z0-9_-]{2603}$")
+# A uid is a filename component (profiles/<uid>.json). An imported JSON
+# profile or a subscription entry can carry any "uid" string; one holding
+# "/", ".." or an absolute path would escape profiles_dir() when written.
+_UID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _valid_uid(uid) -> bool:
+    return isinstance(uid, str) and bool(_UID_RE.match(uid))
+
+
+def _safe_uid(uid) -> str:
+    return uid if _valid_uid(uid) else uuid.uuid4().hex
 
 
 def normalize_pcs(raw: str) -> str:
@@ -166,6 +178,8 @@ class ProfileStore:
         return sorted(items, key=lambda x: x.name.lower())
 
     def get(self, uid: str) -> Profile | None:
+        if not _valid_uid(uid):
+            return None  # a hostile uid must not read outside profiles/
         try:
             data = json.loads(self._path(uid).read_text(encoding="utf-8"))
         except (ValueError, OSError):
@@ -178,12 +192,16 @@ class ProfileStore:
 
     def save(self, profile: Profile) -> Profile:
         self.dir.mkdir(parents=True, exist_ok=True)
+        # Never trust a uid from imported/profile data as a filename part.
+        profile.uid = _safe_uid(profile.uid)
         self._path(profile.uid).write_text(
             json.dumps(profile.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
         )
         return profile
 
     def delete(self, uid: str) -> None:
+        if not _valid_uid(uid):
+            return
         self._path(uid).unlink(missing_ok=True)
         if self.active_uid() == uid:
             (self.dir / "active.txt").unlink(missing_ok=True)

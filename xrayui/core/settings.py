@@ -179,8 +179,13 @@ def _merge(base: dict, over: dict) -> dict:
     for k, v in over.items():
         if k not in out:
             continue  # stale key from an older version
-        if isinstance(v, dict) and isinstance(out[k], dict):
-            out[k] = _merge(out[k], v)
+        if isinstance(out[k], dict):
+            # A saved container of the wrong shape (routing/dns/... are always
+            # read as dicts) keeps the default rather than replacing it: every
+            # consumer of these keys calls .get() on them, so anything else
+            # would crash the connect on a hand-edited or corrupt file.
+            if isinstance(v, dict):
+                out[k] = _merge(out[k], v)
         else:
             out[k] = v
     return out
