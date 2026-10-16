@@ -1,9 +1,14 @@
 """Keep Qt's clipboard and the macOS user's clipboard the same.
 
-The elevated sushTun cannot see the user's pasteboard (core/desktop.py), so on
-its own every paste into a field found nothing and every copy out of the app
-stayed inside it. Whenever the app comes to the front it takes over whatever
-the user copied elsewhere, and whatever is copied inside it goes back out.
+An elevated sushTun started outside the user's login session could not see
+the user's pasteboard (core/desktop.py), so on its own every paste into a
+field found nothing and every copy out of the app stayed inside it. The app
+is now started inside that session (elevate.py wraps it in `launchctl
+asuser`), where Qt's clipboard may reach the pasteboard directly -- but this
+bridge is kept regardless: it is a no-op when both sides already agree, and
+it still covers any session where they do not. Whenever the app comes to the
+front it takes over whatever the user copied elsewhere, and whatever is
+copied inside it goes back out.
 """
 from __future__ import annotations
 
@@ -47,12 +52,16 @@ class SessionClipboard(QObject):
 
 
 # -- reaching the clipboard when Qt cannot ------------------------------------
-# Qt's clipboard is the process's own pasteboard, and the elevated copy cannot
-# reach the macOS pasteboard service at all (launchd: "failed lookup:
-# com.apple.pasteboard.1"). SessionClipboard above can therefore read the
-# user's text, but setText() has nowhere to put it: Ctrl+V found nothing and a
-# copy never left the app. Everything below goes to the user's pasteboard
-# through desktop.py directly and only uses Qt's clipboard as a fallback.
+# Qt's clipboard is the process's own pasteboard, and an elevated copy started
+# outside the user's login session could not reach the macOS pasteboard
+# service at all (launchd: "failed lookup: com.apple.pasteboard.1").
+# SessionClipboard above can therefore read the user's text, but setText()
+# has nowhere to put it: Ctrl+V found nothing and a copy never left the app.
+# Everything below goes to the user's pasteboard through desktop.py directly
+# and only uses Qt's clipboard as a fallback. The elevated app now starts
+# inside the session, where Qt may already reach it -- every helper here
+# then agrees with Qt instead of fighting it (a failed desktop.py read falls
+# back to Qt's text, and set_text always sets Qt's text too).
 
 def elevated_on_mac() -> bool:
     return (sys.platform == "darwin" and hasattr(os, "geteuid")

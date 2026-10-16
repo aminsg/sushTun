@@ -14,6 +14,7 @@
 - **macOS: no second "sushTun" in the Dock and Cmd+Tab.** The helper that asks for the administrator password used to stay alive for the whole session, and macOS listed it as another copy of the app. It now exits as soon as the password is accepted, and a start that fails right away (privacy protection) is still recognised.
 - **macOS: a proper menu bar.** The app menu now has About sushTun, Settings… (`Cmd+,`), Hide sushTun (`Cmd+H`) and Quit sushTun (`Cmd+Q`), and there are Edit (Cut/Copy/Paste/Select All), Window (Minimize, Zoom, Close Window) and Help menus with Mac-standard shortcuts. A login launch always starts in the menu bar instead of popping a window (and asking for the password) right after login, and notifications stay quiet while you are looking at the window. The update screen for an installed app names the `sushTun-macos.dmg` file to download.
 - **macOS: closing the window hides it instead of quitting, and the Dock brings it back.** The red button (or Cmd+W) now always hides the window while the tunnel keeps running — before, with no tray icon it quit the app and cut the tunnel. Clicking the Dock icon brings a hidden window back; quitting stays Cmd+Q or Quit.
+- **macOS: the menu-bar icon is back.** The administrator copy used to start outside your login session, so macOS kept its menu-bar icon (and, on the side, the Dock and the clipboard) away from it. It now starts inside your session — still with administrator rights — so the icon shows up as it should.
 
 <!-- fa -->
 
@@ -29,6 +30,7 @@
 - **مک: دیگه sushTun دوم تو Dock و Cmd+Tab نمی‌مونه.** ابزار کمکی‌ای که رمز ادمین رو می‌پرسید تا آخر برنامه زنده می‌موند و macOS اون رو یه نسخه‌ی دیگه از برنامه نشون می‌داد. حالا همین‌که رمز قبول شد بسته می‌شه، و اگه برنامه همون لحظه‌ی اول بالا نیاد (مثلاً به‌خاطر حفاظت حریم خصوصی) هنوز تشخیص داده می‌شه.
 - **مک: منوی درست‌وحسابی.** منوی برنامه حالا About sushTun، Settings… (`Cmd+,`)، Hide sushTun (`Cmd+H`) و Quit sushTun (`Cmd+Q`) داره، و منوهای Edit (کات/کپی/پیست/انتخاب همه)، Window (کوچک کردن، زوم، بستن پنجره) و Help هم با میان‌برهای استاندارد مک اضافه شدن. اجرای موقع ورود همیشه تو نوار منو شروع می‌شه و دیگه بلافاصله بعد از ورود پنجره باز نمی‌کنه (و رمز نمی‌خواد)، و وقتی داری به پنجره نگاه می‌کنی اعلان اضافه نمیاد. صفحه‌ی آپدیت برای نسخه‌ی نصبی هم اسم فایل `sushTun-macos.dmg` رو می‌گه که دانلود کنی.
 - **مک: بستن پنجره دیگه برنامه رو نمی‌بنده، فقط قایمش می‌کنه و داک برش می‌گردونه.** دکمه‌ی قرمز (یا Cmd+W) حالا همیشه پنجره رو قایم می‌کنه و تونل وصل می‌مونه؛ قبلاً اگه آیکون tray نبود برنامه کلاً بسته می‌شد و تونل قطع می‌شد. رو آیکون داک که کلیک کنی پنجره برمی‌گرده؛ بستن کامل همون Cmd+Q یا Quit می‌مونه.
+- **مک: آیکون منو بار برگشت.** نسخه‌ی ادمین برنامه قبلاً بیرون از سشن لاگین تو اجرا می‌شد و macOS آیکون بالای صفحه (و کنارش داک و کلیپ‌بورد) رو ازش قایم می‌کرد. حالا تو همون سشن خودت بالا میاد — ولی هنوز با دسترسی ادمین — پس آیکون همون‌طور که باید دیده می‌شه.
 
 ## v0.10.0
 

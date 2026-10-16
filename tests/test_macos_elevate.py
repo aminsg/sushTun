@@ -23,14 +23,25 @@ def _errlog_of(script: str) -> str:
 
 
 @pytest.fixture
-def mac(monkeypatch):
+def mac(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(elevate, "IS_MAC", True)
     monkeypatch.setattr(elevate, "_elevated_cmd", lambda: ["/Applications/sushTun.app/x"])
     monkeypatch.setattr(elevate, "_session_args", lambda: [])
     monkeypatch.setattr(elevate, "mac_privacy_blocked", False)
     monkeypatch.setattr(elevate, "_MAC_START_WATCH", 0.3)
+    # The wrapper is on by default: the "launcher" is uid 501 and launchctl
+    # exists (a stand-in file: only its existence is checked). Fallback tests
+    # below switch either off.
+    monkeypatch.setattr(os, "getuid", lambda: 501)
+    launchctl = tmp_path / "launchctl"
+    launchctl.touch()
+    monkeypatch.setattr(elevate, "_LAUNCHCTL", str(launchctl))
     return monkeypatch
+
+
+def _prefix() -> list[str]:
+    return [elevate._LAUNCHCTL, "asuser", "501"]
 
 
 def _osascript(mac, returncode=0, stdout="4242\n", stderr="", errlog_text=None, seen=None):
@@ -113,9 +124,13 @@ def test_pid_alive_treats_a_root_owned_process_as_alive(monkeypatch):
     assert elevate._pid_alive(1) is False
 
 
-def test_relaunch_macos_escaping(monkeypatch):
+def test_relaunch_macos_escaping(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(elevate, "IS_MAC", True)
+    monkeypatch.setattr(os, "getuid", lambda: 501)
+    launchctl = tmp_path / "launchctl"
+    launchctl.touch()
+    monkeypatch.setattr(elevate, "_LAUNCHCTL", str(launchctl))
 
     script_passed = []
 
@@ -147,4 +162,59 @@ def test_relaunch_macos_escaping(monkeypatch):
     evaluated = evaluated.rsplit(" >/dev/null 2>", 1)[0]
 
     parsed = shlex.split(evaluated)
-    assert parsed == ["/path/to/John's app/xrayui", "--some-arg", 'He said "Hello\\World"']
+    assert parsed[:3] == [str(launchctl), "asuser", "501"]
+    assert parsed[3:] == ["/path/to/John's app/xrayui", "--some-arg", 'He said "Hello\\World"']
+
+
+def test_the_elevated_app_starts_inside_the_users_session(mac):
+    # Bare `do shell script` runs outside the login session, where launchd
+    # withholds the menu-bar agent, the Dock and the pasteboard from the root
+    # process. `launchctl asuser` puts it back in without changing uid 0.
+    seen = []
+    _osascript(mac, seen=seen)
+    mac.setattr(elevate, "_pid_alive", lambda pid: True)
+    assert elevate._relaunch_macos() is True
+    shell = _shell_of(seen[0])
+    quoted = " ".join(shlex.quote(a) for a in _prefix())
+    assert shell.startswith(quoted + " ")
+    assert "/Applications/sushTun.app/x" in shell
+
+
+def test_asuser_names_the_uid_of_the_launcher(mac):
+    # The launcher is unelevated, so its own uid is the user behind the
+    # password prompt -- the same uid _session_args records as SUDO_UID.
+    seen = []
+    _osascript(mac, seen=seen)
+    mac.setattr(os, "getuid", lambda: 502)
+    mac.setattr(elevate, "_pid_alive", lambda pid: True)
+    assert elevate._relaunch_macos() is True
+    assert "asuser 502 " in _shell_of(seen[0])
+
+
+def test_a_missing_launchctl_falls_back_to_the_old_launch(mac):
+    mac.setattr(elevate, "_LAUNCHCTL", "/nonexistent/launchctl-for-tests")
+    seen = []
+    _osascript(mac, seen=seen)
+    mac.setattr(elevate, "_pid_alive", lambda pid: True)
+    assert elevate._relaunch_macos() is True
+    shell = _shell_of(seen[0])
+    assert "launchctl" not in shell
+    assert shell.startswith("/Applications/sushTun.app/x")
+
+
+def test_an_already_root_launcher_needs_no_session_wrapper(mac):
+    mac.setattr(os, "getuid", lambda: 0)
+    seen = []
+    _osascript(mac, seen=seen)
+    mac.setattr(elevate, "_pid_alive", lambda pid: True)
+    assert elevate._relaunch_macos() is True
+    assert "launchctl" not in _shell_of(seen[0])
+
+
+def _no_uid() -> int:
+    raise OSError("no uid here")
+
+
+def test_session_prefix_is_empty_without_a_launcher_uid(mac):
+    mac.setattr(os, "getuid", _no_uid)
+    assert elevate._session_launch_prefix() == []
