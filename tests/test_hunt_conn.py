@@ -1,7 +1,9 @@
 """Bug-hunt cover for the connect/teardown path (hunt-conn)."""
 from __future__ import annotations
 
+import socket
 import subprocess
+import threading
 import types
 from unittest.mock import Mock
 
@@ -92,7 +94,6 @@ def test_speedtest_batch_never_leaves_a_zombie(monkeypatch, tmp_path):
 
 
 def test_chain_probe_never_leaves_a_zombie(monkeypatch):
-    import threading
 
     from xrayui.core import chain_test, speedtest
 
@@ -148,3 +149,20 @@ def test_linux_wait_for_tun_ignores_garbage_ip_json(monkeypatch):
     monkeypatch.setattr(posix, "IS_MAC", False)
     monkeypatch.setattr(posix.proc, "run", garbage)
     assert posix.wait_for_tun(timeout=5, alive=lambda: False) is None
+
+
+def test_unresolvable_host_reports_connect_error(monkeypatch, tmp_path):
+    conn, _calls = _stub_connect(monkeypatch, tmp_path)
+    monkeypatch.setattr(connection.network, "detect_interface", lambda: _iface())
+    monkeypatch.setattr(connection.network, "foreign_tunnel", lambda alias: None,
+                        raising=False)
+
+    def boom(host):
+        raise socket.gaierror(-2, "Name or service not known")
+
+    monkeypatch.setattr(connection, "_resolve", boom)
+    profile = types.SimpleNamespace(address="no-such-host.test", id="abc",
+                                    protocol="vless")
+    with pytest.raises(connection.ConnectError, match="could not resolve"):
+        conn.connect(profile)
+    assert not conn.state.is_connected()

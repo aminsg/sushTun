@@ -125,7 +125,11 @@ class Connection:
                 "disconnect it first; two full tunnels cannot share the default route"
             )
 
-        server_ip = _resolve(profile.address)
+        try:
+            server_ip = _resolve(profile.address)
+        except OSError as exc:
+            # A dead DNS or an IPv6-only name is a bad address, not a crash.
+            raise ConnectError(f"could not resolve {profile.address}: {exc}") from exc
         self._log("Backing up DNS...")
         parked = self.state.pending().get(iface.alias)
         dns = parked.dns if parked else network.backup_dns(iface.alias)
