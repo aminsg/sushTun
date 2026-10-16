@@ -153,6 +153,8 @@ class Connection:
             paths.runtime_config().unlink(missing_ok=True)
         except OSError as exc:
             self._log(f"WARNING: teardown operation failed: {exc}")
+        # A failure after state.save() must not leave a stale "connected".
+        self.state.clear()
         raise ConnectError(reason)
 
     def _start_xray(self, cfg_path: Path, server_ip: str) -> None:
@@ -273,7 +275,12 @@ class Connection:
         except Exception as exc:
             self._log(f"Boot restore task not registered: {exc}")
         self._log("Routing DNS and traffic through the tunnel...")
-        if network.set_dns_loopback(iface.alias) is False:
+        try:
+            dns_ok = network.set_dns_loopback(iface.alias)
+        except OSError as exc:
+            self._fail_connect(server_ip, f"Could not route DNS through the tunnel: {exc}")
+            return  # _fail_connect always raises; kept for readers
+        if dns_ok is False:
             self._log("WARNING: DNS could not be routed through the tunnel — "
                       "lookups will leave unencrypted via the local network.")
         self._owned = True
@@ -451,7 +458,13 @@ class Connection:
         except Exception as exc:
             self._log(f"Boot restore task not registered: {exc}")
         self._log("Routing DNS and traffic through the tunnel...")
-        if network.set_dns_loopback(iface.alias) is False:
+        try:
+            dns_ok = network.set_dns_loopback(iface.alias)
+        except OSError as exc:
+            self._restore()
+            raise ConnectError(
+                f"Could not route DNS through the tunnel: {exc}") from exc
+        if dns_ok is False:
             self._log("WARNING: DNS could not be routed through the tunnel — "
                       "lookups will leave unencrypted via the local network.")
         try:

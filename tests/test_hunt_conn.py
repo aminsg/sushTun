@@ -166,3 +166,49 @@ def test_unresolvable_host_reports_connect_error(monkeypatch, tmp_path):
     with pytest.raises(connection.ConnectError, match="could not resolve"):
         conn.connect(profile)
     assert not conn.state.is_connected()
+
+
+def test_dns_hijack_failure_tears_down_half_built_tunnel(monkeypatch, tmp_path):
+    conn, calls = _stub_connect(monkeypatch, tmp_path)
+
+    def boom(alias):
+        calls.append("set_dns_loopback")
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(connection.network, "set_dns_loopback", boom)
+    with pytest.raises(connection.ConnectError, match="Could not route DNS"):
+        conn._connect_generic(types.SimpleNamespace(uid="p1"), _iface(),
+                              "203.0.113.10", DnsState())
+    assert "xray_stop" in calls  # the half-built tunnel is stopped
+    assert calls.count("remove_routes") == 2  # pre-start sweep plus failure sweep
+    assert not conn.state.is_connected()  # no stale "connected" left behind
+
+
+def test_macos_dns_hijack_failure_restores_half_built_tunnel(monkeypatch, tmp_path):
+    from xrayui.core import tun2socks as t2s
+
+    conn, calls = _stub_connect(monkeypatch, tmp_path)
+    monkeypatch.setattr(connection.t2s, "kill_stale", lambda: None)
+    monkeypatch.setattr(connection.network, "mac_other_vpn", lambda *a: None,
+                        raising=False)
+    monkeypatch.setattr(connection.network, "mac_ensure_scoped_default",
+                        lambda *a: False, raising=False)
+    monkeypatch.setattr(connection.network, "mac_wait_for_device", lambda **k: True,
+                        raising=False)
+    monkeypatch.setattr(connection.network, "mac_add_split_routes", lambda *a: None,
+                        raising=False)
+    monkeypatch.setattr(connection.network, "mac_route_device", lambda dest: t2s.DEVICE,
+                        raising=False)
+    monkeypatch.setattr(connection.network, "restore_dns", lambda *a, **k: True)
+    monkeypatch.setattr(connection.network, "release_stranded_dns", lambda **k: [])
+    monkeypatch.setattr(conn.tun2socks, "stop", lambda: calls.append("bridge_stop"))
+
+    def boom(alias):
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(connection.network, "set_dns_loopback", boom)
+    with pytest.raises(connection.ConnectError, match="Could not route DNS"):
+        conn._connect_macos(types.SimpleNamespace(uid="p1"), _iface(),
+                            "203.0.113.10", DnsState())
+    assert "xray_stop" in calls
+    assert not conn.state.is_connected()
