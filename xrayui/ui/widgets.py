@@ -201,6 +201,8 @@ class _ServerTableCore(QWidget):
         for col in (COL_ACTIVE, COL_DELAY, *[c for c, _ in OPTIONAL_COLUMNS]):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
+        # Sampling keeps ResizeToContents fast on thousands of rows.
+        header.setResizeContentsPrecision(30)
         # Transport already implies Type; both stay in the header menu.
         self.table.setColumnHidden(COL_TYPE, True)
         self.table.setColumnHidden(COL_SUB, True)

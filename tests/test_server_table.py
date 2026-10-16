@@ -371,3 +371,35 @@ def test_hysteria2_transport_does_not_claim_tcp(qapp):
 
     p = importer_mod.parse_hysteria2("hysteria2://pw@h.example.com:443?sni=h.example.com#HY")
     assert _transport_text(p) == "hy2"
+
+
+def test_header_measures_a_sample_of_rows_not_every_row(qapp):
+    panel = ProfilePanel()
+    assert panel.table.horizontalHeader().resizeContentsPrecision() == 30
+
+
+def test_short_table_columns_still_fit_their_header_text(qapp):
+    from PySide6.QtWidgets import QHeaderView
+
+    from xrayui.ui.server_table import COL_ACTIVE, OPTIONAL_COLUMNS
+
+    panel = ProfilePanel()
+    panel.set_profiles(
+        [Profile(name=f"n{i}", protocol="vless", address=f"h{i}.example.com",
+                 port=443, id="u", network="ws", security="tls", uid=f"s{i}")
+         for i in range(5)], "s0")
+    _render(panel, 800)
+    try:
+        header = panel.table.horizontalHeader()
+        metrics = header.fontMetrics()
+        for col in (COL_ACTIVE, COL_DELAY, *[c for c, _ in OPTIONAL_COLUMNS]):
+            if panel.table.isColumnHidden(col):
+                continue
+            assert header.sectionResizeMode(col) == QHeaderView.ResizeToContents
+            title = panel.model.headerData(col, Qt.Horizontal) or ""
+            width = panel.table.columnWidth(col)
+            assert width > 0
+            assert width >= metrics.horizontalAdvance(title), (
+                f"column {col} ({title!r}) is {width}px, narrower than its header text")
+    finally:
+        panel.close()
