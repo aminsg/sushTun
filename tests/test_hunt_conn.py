@@ -176,6 +176,8 @@ def test_dns_hijack_failure_tears_down_half_built_tunnel(monkeypatch, tmp_path):
         raise OSError(13, "Permission denied")
 
     monkeypatch.setattr(connection.network, "set_dns_loopback", boom)
+    monkeypatch.setattr(connection.network, "restore_dns",
+                        lambda alias, state, retries=1: True)
     with pytest.raises(connection.ConnectError, match="Could not route DNS"):
         conn._connect_generic(types.SimpleNamespace(uid="p1"), _iface(),
                               "203.0.113.10", DnsState())
@@ -199,7 +201,9 @@ def test_macos_dns_hijack_failure_restores_half_built_tunnel(monkeypatch, tmp_pa
                         raising=False)
     monkeypatch.setattr(connection.network, "mac_route_device", lambda dest: t2s.DEVICE,
                         raising=False)
-    monkeypatch.setattr(connection.network, "restore_dns", lambda *a, **k: True)
+    restored = []
+    monkeypatch.setattr(connection.network, "restore_dns",
+                        lambda *a, **k: restored.append((a[0], a[1])) or True)
     monkeypatch.setattr(connection.network, "release_stranded_dns", lambda **k: [])
     monkeypatch.setattr(conn.tun2socks, "stop", lambda: calls.append("bridge_stop"))
 
@@ -211,6 +215,7 @@ def test_macos_dns_hijack_failure_restores_half_built_tunnel(monkeypatch, tmp_pa
         conn._connect_macos(types.SimpleNamespace(uid="p1"), _iface(),
                             "203.0.113.10", DnsState())
     assert "xray_stop" in calls
+    assert restored and all(state == DnsState() for _, state in restored)
     assert not conn.state.is_connected()
 
 
@@ -260,3 +265,44 @@ def test_macos_dns_backup_keeps_real_servers(monkeypatch):
     backup = _mac_dns(monkeypatch, "8.8.8.8\n2001:4860:4860::8888\n")
     assert backup == DnsState(mode="MACOS",
                               servers=["Wi-Fi", "8.8.8.8", "2001:4860:4860::8888"])
+
+
+def _boom_dns(monkeypatch, conn):
+    def boom(alias):
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(connection.network, "set_dns_loopback", boom)
+
+
+def test_dns_hijack_failure_restores_backed_up_dns(monkeypatch, tmp_path):
+    from xrayui.core._net_common import DnsState
+
+    conn, _calls = _stub_connect(monkeypatch, tmp_path)
+    backup = DnsState(mode="STATIC", servers=["9.9.9.9"])
+    _boom_dns(monkeypatch, conn)
+    restored = []
+    monkeypatch.setattr(connection.network, "restore_dns",
+                        lambda alias, state, retries=1: restored.append((alias, state)) or True)
+    with pytest.raises(connection.ConnectError, match="Could not route DNS"):
+        conn._connect_generic(types.SimpleNamespace(uid="p1"), _iface(),
+                              "203.0.113.10", backup)
+    assert restored == [("Ethernet 3", backup)]  # the saved backup goes back
+    assert not conn.state.is_connected()
+    assert conn.state.pending() == {}
+
+
+def test_dns_hijack_failure_parks_backup_when_rollback_fails(monkeypatch, tmp_path):
+    from xrayui.core._net_common import DnsState
+
+    conn, _calls = _stub_connect(monkeypatch, tmp_path)
+    backup = DnsState(mode="STATIC", servers=["9.9.9.9"])
+    _boom_dns(monkeypatch, conn)
+    monkeypatch.setattr(connection.network, "restore_dns",
+                        lambda alias, state, retries=1: False)
+    with pytest.raises(connection.ConnectError, match="Could not route DNS"):
+        conn._connect_generic(types.SimpleNamespace(uid="p1"), _iface(),
+                              "203.0.113.10", backup)
+    pending = conn.state.pending()
+    assert set(pending) == {"Ethernet 3"}  # the next launch retries this
+    assert pending["Ethernet 3"].dns == backup
+    assert not conn.state.is_connected()

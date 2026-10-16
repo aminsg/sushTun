@@ -157,6 +157,19 @@ class Connection:
         self.state.clear()
         raise ConnectError(reason)
 
+    def _dns_rollback(self, alias: str, dns) -> None:
+        """Put the pre-connect DNS back after a failed hijack, best effort."""
+        # The hijack may have half-applied before raising; the backup in
+        # state/ is wiped below, so a failed rollback stays parked instead.
+        try:
+            restored = network.restore_dns(alias, dns)
+        except Exception as exc:
+            restored = False
+            self._log(f"WARNING: DNS rollback failed: {exc}")
+        if not restored:
+            self.state.save_pending(alias, dns)
+            self._log("WARNING: DNS rollback failed; backup saved for later recovery.")
+
     def _start_xray(self, cfg_path: Path, server_ip: str) -> None:
         """Turn a failed binary launch into a connect error after cleanup."""
         try:
@@ -278,6 +291,7 @@ class Connection:
         try:
             dns_ok = network.set_dns_loopback(iface.alias)
         except OSError as exc:
+            self._dns_rollback(iface.alias, dns)
             self._fail_connect(server_ip, f"Could not route DNS through the tunnel: {exc}")
             return  # _fail_connect always raises; kept for readers
         if dns_ok is False:
@@ -461,6 +475,7 @@ class Connection:
         try:
             dns_ok = network.set_dns_loopback(iface.alias)
         except OSError as exc:
+            self._dns_rollback(iface.alias, dns)
             self._restore()
             raise ConnectError(
                 f"Could not route DNS through the tunnel: {exc}") from exc
