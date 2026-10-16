@@ -464,6 +464,9 @@ def test_open_settings_reloads_profiles_and_tray_after_a_restore(window, monkeyp
         def restored(self):
             return True
 
+        def deleteLater(self):
+            pass
+
     monkeypatch.setattr("xrayui.ui.settings_window.SettingsWindow", FakeDialog)
     monkeypatch.setattr(window.store, "list", lambda: [])
     monkeypatch.setattr(window.store, "active_uid", lambda: None)
@@ -1818,6 +1821,9 @@ def test_settings_that_xray_reads_at_startup_ask_for_a_reconnect(
 
         def restored(self):
             return False
+
+        def deleteLater(self):
+            pass
 
     monkeypatch.setattr("xrayui.ui.settings_window.SettingsWindow", _Dlg)
     window._open_settings()

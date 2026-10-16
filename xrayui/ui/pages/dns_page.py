@@ -447,8 +447,11 @@ class DnsPage(QWidget):
         worker = Worker(fn)
 
         def finish(result=None, error=None):
-            self._workers.discard(worker)
-            done(result=result, error=error)
+            try:
+                self._workers.discard(worker)
+                done(result=result, error=error)
+            except RuntimeError:
+                pass  # the page was destroyed before the result landed
 
         worker.signals.finished.connect(lambda r: finish(result=r))
         worker.signals.error.connect(lambda e: finish(error=e))

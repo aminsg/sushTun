@@ -2013,6 +2013,9 @@ class MainWindow(QMainWindow):
             self._refresh_routing_combo()
             if self.conn.is_connected():
                 self._needs_reconnect(tr("Settings restored from backup"))
+        # exec() never deletes the window; without this every close parks
+        # another whole settings window behind the main window.
+        dlg.deleteLater()
 
     # ── first-run tour ────────────────────────────────────────────────────
 
@@ -2088,6 +2091,7 @@ class MainWindow(QMainWindow):
             self._refresh_routing_combo()
             self._needs_reconnect(tr("Routing saved"))
             self._routing_page.load(copy.deepcopy(self.settings["routing"]))
+        dlg.deleteLater()
 
     def _open_dns(self) -> None:
         dlg = DnsDialog(self.settings["dns"],
@@ -2098,6 +2102,9 @@ class MainWindow(QMainWindow):
             self._needs_reconnect(tr("DNS saved"))
             self._dns_page.load(copy.deepcopy(self.settings["dns"]),
                                 copy.deepcopy(self.settings["routing"]))
+        # exec() never deletes the dialog; without this every cycle parks
+        # another whole editor behind the window.
+        dlg.deleteLater()
 
     def _on_routing_applied(self, cfg) -> None:
         self.settings["routing"] = cfg
@@ -2326,8 +2333,11 @@ class MainWindow(QMainWindow):
         worker = Worker(fn)
 
         def finish(result=None, error=None):
-            self._workers.discard(worker)
-            done(result=result, error=error)
+            try:
+                self._workers.discard(worker)
+                done(result=result, error=error)
+            except RuntimeError:
+                pass  # the window died between start and delivery
 
         worker.signals.finished.connect(lambda r: finish(result=r))
         worker.signals.error.connect(lambda e: finish(error=e))
