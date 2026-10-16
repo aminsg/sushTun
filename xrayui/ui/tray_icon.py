@@ -1,20 +1,27 @@
-"""Menu-bar (tray) status icon: sushbot when idle, the exit flag when connected.
+"""Menu-bar (tray) status icon: mascot glyph when idle, the exit flag when connected.
 
 The icon is derived only from (state, country, appearance) and cached, so the
 window can refresh it from every existing connection-state callback at
 near-zero cost with no timers or polling.
 
-Why full-colour, not a macOS template image: a template image keeps only the
-alpha channel and the system tints it monochrome (Qt: ``QIcon.setIsMask(True)``;
-Apple: ``NSImage.template = YES``). That is right for a symbolic glyph but
-destroys a flag and the mascot, so every icon here is explicitly *not* a mask
-and is drawn to stay visible on both light and dark bars: flags get a neutral
-hairline border (white flags on a light bar, dark flags on a dark bar), and
-the status dot gets a contrasting ring.
+Why a macOS template image for the idle glyph: every other menu-bar icon is a
+simple transparent monochrome glyph that the system tints black on a light bar
+and white on a dark bar (Apple: ``NSImage.isTemplate`` — "only black and clear
+content"; Qt: ``QIcon.setIsMask(True)`` — "menu icons on macOS"). The old icon
+shrunk the full-colour 512px app tile to 22pt, which read as a busy dark square
+with a light frame next to those glyphs. The disconnected state is therefore a
+hand-drawn monochrome sushi-roll glyph with no tile and no frame, marked as a
+mask so macOS tints it (including the highlighted/pressed state) for free.
+
+A template keeps only alpha, so it cannot carry the amber/green badge: the
+connecting and unknown-country states are non-mask icons instead, with the same
+glyph pre-tinted black for a light bar and white for a dark bar (the ``dark``
+parameter, refreshed from the existing appearance probe) plus the unchanged
+coloured dot. The flag state is full colour and unchanged.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -28,7 +35,6 @@ from PySide6.QtGui import (
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
 
-from .. import paths
 from ..core import geo_exit
 from ..i18n import tr
 
@@ -44,6 +50,11 @@ _CONNECTING_DOT = QColor(255, 159, 10)  # system orange
 # white vanishes on a light one, so a mid grey is used for the flag edge.
 _EDGE = QColor(127, 127, 127, 150)
 
+# The glyph is drawn in one colour: pure black for the template (macOS keeps
+# only alpha and tints it), black/white pre-tinted for the badged states.
+_GLYPH_BLACK = QColor(0, 0, 0)
+_GLYPH_WHITE = QColor(255, 255, 255)
+
 _cache: dict[tuple, QIcon] = {}
 _pix_cache: dict[tuple, QPixmap] = {}
 
@@ -53,7 +64,8 @@ def system_is_dark() -> bool:
 
     The menu bar follows the system appearance and the app theme follows dark
     mode too, so the palette's lightness is a cheap proxy. Anything unknown
-    (no app yet) is light; the icons are drawn to work on both anyway.
+    (no app yet) is light; the template glyph works on both anyway and the
+    badged states are redrawn once the app exists.
     """
     app = QApplication.instance()
     if app is None:
@@ -72,12 +84,13 @@ def _device_ratio() -> float:
     return max(float(ratio or 1.0), 2.0)
 
 
-def _sushbot_source() -> QPixmap | None:
-    png = paths.icon_png()
-    if not png.exists():
-        return None
-    pix = QPixmap(str(png))
-    return pix if not pix.isNull() else None
+def _needs_dark(state: str, code: str | None) -> bool:
+    # Only the badged (non-template) states bake the bar colour in: the glyph
+    # is pre-tinted black/white because a mask cannot carry the coloured dot.
+    # The template glyph and the full-colour flags read on both bars as drawn.
+    if state == "connecting":
+        return True
+    return state == "connected" and code is None
 
 
 def tray_pixmap(state: str, country_code: str | None = None, dark: bool = False) -> QPixmap:
@@ -86,9 +99,11 @@ def tray_pixmap(state: str, country_code: str | None = None, dark: bool = False)
     if state not in ("disconnected", "connecting", "connected"):
         state = "disconnected"
     # Only the connected flag varies by country; the other states always show
-    # the mascot (with or without a badge), so they share one cache entry.
+    # the glyph (with or without a badge), so they share one cache entry.
     if state != "connected":
         code = None
+    if not _needs_dark(state, code):
+        dark = False
     dpr = _device_ratio()
     key = (state, code, bool(dark), dpr)
     cached = _pix_cache.get(key)
@@ -103,9 +118,11 @@ def tray_pixmap(state: str, country_code: str | None = None, dark: bool = False)
     p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
 
     if state == "connected" and code is not None:
-        _paint_flag(p, code, dpr)
+        _paint_flag(p, code, dark)
+    elif state == "disconnected":
+        _paint_glyph(p, _GLYPH_BLACK, detail="full")
     else:
-        _paint_sushbot(p, dpr, dark)
+        _paint_glyph(p, _GLYPH_WHITE if dark else _GLYPH_BLACK, detail="full")
         if state == "connected":
             _paint_dot(p, _CONNECTED_DOT)
         elif state == "connecting":
@@ -115,12 +132,12 @@ def tray_pixmap(state: str, country_code: str | None = None, dark: bool = False)
     return pix
 
 
-def _paint_flag(p: QPainter, code: str, dpr: float) -> None:
+def _paint_flag(p: QPainter, code: str, dark: bool) -> None:
     renderer = QSvgRenderer(str(geo_exit.flag_path(code)))
     if not renderer.isValid():
         # A flag that cannot be drawn must never be blank: fall back to the
-        # mascot with the connected badge instead of a wrong/empty icon.
-        _paint_sushbot(p, dpr, False)
+        # glyph with the connected badge instead of a wrong/empty icon.
+        _paint_glyph(p, _GLYPH_WHITE if dark else _GLYPH_BLACK, detail="full")
         _paint_dot(p, _CONNECTED_DOT)
         return
     x = (_TRAY_PT - _FLAG_W) / 2
@@ -138,27 +155,63 @@ def _paint_flag(p: QPainter, code: str, dpr: float) -> None:
     p.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), _FLAG_RADIUS - 0.5, _FLAG_RADIUS - 0.5)
 
 
-def _paint_sushbot(p: QPainter, dpr: float, dark: bool) -> None:
-    src = _sushbot_source()
-    if src is None:
-        # No mascot on disk (dev tree without assets): a filled disc keeps the
-        # tray showing something rather than nothing.
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(QColor(140, 140, 140)))
-        p.drawEllipse(QRectF(2, 2, _TRAY_PT - 4, _TRAY_PT - 4))
-        return
-    # Fit the square mascot inside the tray square with a 1pt margin.
-    side = _TRAY_PT - 2
-    target = QRectF(1, 1, side, side)
-    p.drawPixmap(target, src, QRectF(0, 0, src.width(), src.height()))
-    if dark:
-        # The mascot tile is dark-baked, so on a dark bar its outline
-        # dissolves; a faint light frame keeps it defined.
-        frame = QPen(QColor(255, 255, 255, 90))
-        frame.setWidthF(1.0)
-        p.setPen(frame)
+def _paint_glyph(p: QPainter, color: QColor, detail: str = "full") -> None:
+    """Simplified monochrome mascot: round sushi roll + chopsticks.
+
+    Drawn in one opaque colour on transparency (a template when black). The
+    roll is a bold ring on the 22pt grid (2+pt strokes survive @1x, curves are
+    snapped so they don't blur); ``detail`` picks the interior: "full" keeps
+    the brain|circuit split when legible, "split" only the centre line, and
+    "plain" the silhouette alone. Production always uses "full".
+    """
+    p.setPen(Qt.NoPen)
+    p.setBrush(Qt.NoBrush)
+
+    def stroke(width: float) -> None:
+        pen = QPen(color)
+        pen.setWidthF(width)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
         p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(target.adjusted(0.5, 0.5, -0.5, -0.5), 5.0, 5.0)
+
+    # Chopsticks behind the roll: two parallel round-cap sticks reaching for
+    # the top-right corner, the signature of the app tile.
+    stroke(1.7)
+    p.drawLine(QPointF(13.5, 8.5), QPointF(18.0, 1.2))
+    p.drawLine(QPointF(15.6, 9.2), QPointF(20.2, 2.0))
+
+    # Nori ring: the bold silhouette that reads even at 1x.
+    stroke(2.2 if detail == "full" else 2.6)
+    p.drawEllipse(QRectF(2.8, 7.7, 14.4, 11.6))
+
+    if detail == "plain":
+        return
+    # Rice split: the brain|circuit centre line.
+    stroke(1.3)
+    p.drawLine(QPointF(10.0, 8.6), QPointF(10.0, 18.6))
+    if detail == "split":
+        return
+
+    # Brain half (left): two sulcus squiggles, same 1.2pt round style.
+    stroke(1.2)
+    brain1 = QPainterPath(QPointF(8.6, 10.4))
+    brain1.cubicTo(QPointF(6.6, 10.8), QPointF(6.4, 12.4), QPointF(8.0, 13.0))
+    p.drawPath(brain1)
+    brain2 = QPainterPath(QPointF(8.6, 16.6))
+    brain2.cubicTo(QPointF(6.8, 16.2), QPointF(6.4, 14.8), QPointF(7.8, 14.2))
+    p.drawPath(brain2)
+
+    # Circuit half (right): three nodes joined in a triangle, like the tile.
+    stroke(1.0)
+    a, b, c = QPointF(12.4, 10.6), QPointF(12.4, 16.4), QPointF(14.9, 13.5)
+    p.drawLine(a, b)
+    p.drawLine(a, c)
+    p.drawLine(b, c)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QBrush(color))
+    for node in (a, b, c):
+        p.drawEllipse(QRectF(node.x() - 1.15, node.y() - 1.15, 2.3, 2.3))
 
 
 def _paint_dot(p: QPainter, color: QColor) -> None:
@@ -170,14 +223,22 @@ def _paint_dot(p: QPainter, color: QColor) -> None:
 
 
 def tray_icon(state: str, country_code: str | None = None, dark: bool = False) -> QIcon:
-    """Cached full-colour tray QIcon for (state, country, appearance)."""
+    """Cached tray QIcon for (state, country, appearance).
+
+    Disconnected is a real macOS template image (mask: macOS tints it black on
+    a light bar, white on a dark bar, including the pressed state). The badged
+    states and flags are full colour (a mask would eat the dot/flag), with the
+    glyph pre-tinted per appearance where needed.
+    """
     pix = tray_pixmap(state, country_code, dark)
-    key = (pix.cacheKey(),)
+    if state not in ("disconnected", "connecting", "connected"):
+        state = "disconnected"
+    mask = state == "disconnected"
+    key = (pix.cacheKey(), mask)
     icon = _cache.get(key)
     if icon is None:
         icon = QIcon(pix)
-        # Full colour: a mask would reduce flags and the mascot to a silhouette.
-        icon.setIsMask(False)
+        icon.setIsMask(mask)
         _cache[key] = icon
     return icon
 
