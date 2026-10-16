@@ -799,7 +799,9 @@ class RoutingPage(QWidget):
         if self._current_set() is None:
             return
         dlg = RuleEditorDialog(None, self)
-        if dlg.exec():
+        accepted = bool(dlg.exec())
+        dlg.deleteLater()  # exec() leaves it parked under the page
+        if accepted:
             self.rule_model.add(dlg.result_rule())
             self._maybe_notify_dirty()
 
@@ -809,7 +811,9 @@ class RoutingPage(QWidget):
         if rule is None:
             return
         dlg = RuleEditorDialog(rule, self)
-        if dlg.exec():
+        accepted = bool(dlg.exec())
+        dlg.deleteLater()  # exec() leaves it parked under the page
+        if accepted:
             self.rule_model.replace(row, dlg.result_rule())
             self._maybe_notify_dirty()
 

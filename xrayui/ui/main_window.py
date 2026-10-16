@@ -999,7 +999,9 @@ class MainWindow(QMainWindow):
         from . import dialogs
 
         dlg = dialogs.ImportDialog(self)
-        if not dlg.exec():
+        accepted = bool(dlg.exec())
+        dlg.deleteLater()  # exec() leaves it parked under the window
+        if not accepted:
             return
         if dlg.subscription_url:
             self._keep_as_subscription(dlg.subscription_url)
@@ -1030,7 +1032,9 @@ class MainWindow(QMainWindow):
         from .dialogs import ProfileEditDialog
 
         dlg = ProfileEditDialog(profile, self)
-        if dlg.exec():
+        accepted = bool(dlg.exec())
+        dlg.deleteLater()  # exec() leaves it parked under the window
+        if accepted:
             self.store.save(dlg.result_profile())
             self._reload_profiles()
 
@@ -1302,7 +1306,9 @@ class MainWindow(QMainWindow):
         from .dialogs import SubscriptionEditDialog
 
         dlg = SubscriptionEditDialog(sub_mod.Subscription(), self)
-        if not dlg.exec():
+        accepted = bool(dlg.exec())
+        dlg.deleteLater()  # exec() leaves it parked under the window
+        if not accepted:
             return
         sub = dlg.result_subscription()
         self.subs.save(sub)
@@ -1329,7 +1335,9 @@ class MainWindow(QMainWindow):
         from .dialogs import SubscriptionEditDialog
 
         dlg = SubscriptionEditDialog(sub, self)
-        if dlg.exec():
+        accepted = bool(dlg.exec())
+        dlg.deleteLater()  # exec() leaves it parked under the window
+        if accepted:
             self.subs.save(dlg.result_subscription())
             self._reload_subs()
 
@@ -1522,7 +1530,9 @@ class MainWindow(QMainWindow):
         from .pages.chains_page import ChainEditor
         dialog = ChainEditor(self.store.list(), self.results.load(),
                              self.chain_store.get(uid) if uid else None, self)
-        if dialog.exec():
+        accepted = bool(dialog.exec())
+        dialog.deleteLater()  # exec() leaves it parked under the window
+        if accepted:
             chain = dialog.result_chain()
             self.chain_store.save(chain)
             self.chain_results.prune(c.uid for c in self.chain_store.list() if c.uid != chain.uid)

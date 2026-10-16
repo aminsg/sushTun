@@ -83,6 +83,48 @@ def test_attaching_a_new_popup_menu_discards_the_old_one(qapp):
         "every set_menu() parks another dead menu under the button")
 
 
+@pytest.fixture
+def no_editor_exec(monkeypatch):
+    import xrayui.ui.dialogs as dialogs_mod
+    import xrayui.ui.pages.chains_page as chains_mod
+    import xrayui.ui.pages.routing_page as routing_mod
+
+    def no_exec(self, *a, **k):
+        return 0
+
+    for cls in (dialogs_mod.ImportDialog, dialogs_mod.ProfileEditDialog,
+                dialogs_mod.SubscriptionEditDialog, chains_mod.ChainEditor,
+                routing_mod.RuleEditorDialog):
+        monkeypatch.setattr(cls, "exec", no_exec, raising=False)
+
+
+def test_editor_dialog_cycles_do_not_park_dialogs(window, no_editor_exec):
+    from PySide6.QtWidgets import QDialog
+
+    from xrayui.core.profiles import Profile
+
+    window.store.save(Profile(name="s", address="a.example.com", port=443, id="u"))
+
+    import xrayui.core.subscription as sub_mod
+
+    sub = sub_mod.Subscription(name="A", url="https://example.com/sub")
+    sub = window.subs.save(sub) or sub
+
+    for _ in range(3):
+        window._import()
+        window._add_sub()
+        window._edit(window.store.list()[0].uid)
+        window._edit_sub(sub.uid)
+        window._edit_chain()
+        window._routing_page._add_set("empty")
+        window._routing_page._add_rule()
+    _flush()
+    parked = [d for d in window.findChildren(QDialog)]
+    assert parked == [], (
+        f"editor cycles parked {len(parked)} dialogs: "
+        f"{sorted({type(d).__name__ for d in parked})}")
+
+
 def test_routing_dialog_cycles_leave_nothing_behind(window):
     from xrayui.ui.routing_dialog import RoutingDialog
 

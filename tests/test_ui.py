@@ -1188,6 +1188,9 @@ def test_add_sub_uses_the_edit_dialog(window, monkeypatch):
         def result_subscription(self):
             return created["sub"]
 
+        def deleteLater(self):
+            pass
+
     monkeypatch.setattr("xrayui.ui.dialogs.SubscriptionEditDialog", FakeDialog)
     monkeypatch.setattr(window, "_refresh_sub", lambda uid: None)
     window._add_sub()
@@ -1986,6 +1989,9 @@ def test_import_dialog_path_skips_duplicates_and_reports(window, monkeypatch):
 
         def exec(self):
             return True
+
+        def deleteLater(self):
+            pass
 
     monkeypatch.setattr("xrayui.ui.dialogs.ImportDialog", lambda _parent: _Dlg())
     window._import()
