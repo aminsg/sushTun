@@ -145,3 +145,32 @@ def test_normalize_pcs_drops_all_unicode_whitespace():
     assert profiles_mod.normalize_pcs("ab:cd\x0bef\xa0gh ") == "abcdefgh"
 
 
+def test_delete_many_equivalent_to_individual_delete(tmp_path, monkeypatch):
+    dir_a = tmp_path / "a"
+    dir_b = tmp_path / "b"
+
+    def make_store(base):
+        monkeypatch.setattr(profiles_mod.paths, "base_dir", lambda: base)
+        s = ProfileStore()
+        for i in range(10):
+            s.save(Profile(name=f"p{i}", address="x", port=443, id="u", uid=f"u{i}"))
+        s.set_active("u3")
+        return s
+
+    store_a = make_store(dir_a)
+    store_b = make_store(dir_b)
+
+    to_delete = ["u1", "u3", "u5", "u9", "nonexistent", "../outside"]
+
+    for uid in to_delete:
+        store_a.delete(uid)
+
+    store_b.delete_many(to_delete)
+
+    files_a = sorted(p.name for p in store_a.dir.iterdir())
+    files_b = sorted(p.name for p in store_b.dir.iterdir())
+    assert files_a == files_b
+    assert store_a.active_uid() == store_b.active_uid()
+    assert [p.uid for p in store_a.list()] == [p.uid for p in store_b.list()]
+
+

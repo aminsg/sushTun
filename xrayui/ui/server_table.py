@@ -95,15 +95,35 @@ class ProfileTableModel(QAbstractTableModel):
         self._sub_names: dict[str, str] = {}
 
     # -- population ----------------------------------------------------
-    def set_profiles(self, profiles: list[Profile], active_uid: str | None) -> None:
-        self.beginResetModel()
-        self._profiles = list(profiles)
+    def _index_rows(self) -> None:
         row_by_uid: dict[str, int] = {}
         for i, p in enumerate(self._profiles):
             row_by_uid.setdefault(p.uid, i)
         self._row_by_uid = row_by_uid
+
+    def set_profiles(self, profiles: list[Profile], active_uid: str | None) -> None:
+        self.beginResetModel()
+        self._profiles = list(profiles)
+        self._index_rows()
         self._active_uid = active_uid
         self.endResetModel()
+
+    def apply_order(self, new_order: list[int]) -> None:
+        # Reorder rows in place: layoutChanged keeps selection and current index.
+        if len(new_order) != len(self._profiles):
+            return
+        self.layoutAboutToBeChanged.emit()
+        old = self._profiles
+        self._profiles = [old[i] for i in new_order]
+        new_row_of_old = [0] * len(old)
+        for new_row, old_row in enumerate(new_order):
+            new_row_of_old[old_row] = new_row
+        current = self.persistentIndexList()
+        self.changePersistentIndexList(
+            current,
+            [self.index(new_row_of_old[i.row()], i.column()) for i in current])
+        self._index_rows()
+        self.layoutChanged.emit()
 
     def _redraw(self) -> None:
         # A plain data refresh, not a structural change: dataChanged (not a
@@ -281,6 +301,9 @@ class ProfileFilterProxy(QSortFilterProxyModel):
     def __init__(self) -> None:
         super().__init__()
         self._needle = ""
+        # The active user sort, applied to the source rows (see sort()).
+        self._sort_column = -1
+        self._sort_order = Qt.AscendingOrder
 
     def set_needle(self, text: str) -> None:
         self._needle = text.strip().lower()
@@ -294,6 +317,50 @@ class ProfileFilterProxy(QSortFilterProxyModel):
         if p is None:
             return False
         return self._needle in p.name.lower() or self._needle in (p.address or "").lower()
+
+    @property
+    def sorted_column(self) -> int:
+        return self._sort_column
+
+    def sort(self, column: int, order: Qt.SortOrder = Qt.AscendingOrder) -> None:
+        # Pre-computes keys and sorts source rows via apply_order to avoid
+        # thousands of Python lessThan comparisons.
+        if column < 0:
+            self._sort_column = -1
+            return
+        self._sort_column = column
+        self._sort_order = order
+        if not self.reapply_sort():
+            super().sort(column, order)
+
+    def reapply_sort(self) -> bool:
+        if self._sort_column < 0:
+            return True
+        model = self.sourceModel()
+        keys = self._snapshot_sort_keys(self._sort_column)
+        if keys is None or len(keys) != model.rowCount():
+            return False
+        order = sorted(range(len(keys)), key=keys.__getitem__,
+                       reverse=self._sort_order == Qt.DescendingOrder)
+        model.apply_order(order)
+        return True
+
+    def _snapshot_sort_keys(self, column: int) -> list | None:
+        model = self.sourceModel()
+        if model is None or column < 0:
+            return None
+        if column == COL_DELAY:
+            vals = [model.data(model.index(row, column), Qt.UserRole)
+                    for row in range(model.rowCount())]
+            return [inf if v is None else v for v in vals]
+        if self.sortRole() != Qt.DisplayRole:
+            return None
+        texts = [model.data(model.index(row, column), Qt.DisplayRole)
+                 for row in range(model.rowCount())]
+        if not all(isinstance(t, str) for t in texts):
+            return None
+        # QString orders by UTF-16 code units; compare UTF-16 bytes to match Qt order.
+        return [t.encode("utf-16-be") for t in texts]
 
     def lessThan(self, left, right) -> bool:
         if left.column() == COL_DELAY:

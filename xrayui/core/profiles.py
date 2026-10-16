@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import MISSING, dataclass, field, fields
 
 from .. import paths
@@ -209,6 +210,16 @@ class ProfileStore:
             return
         self._path(uid).unlink(missing_ok=True)
         if self.active_uid() == uid:
+            (self.dir / "active.txt").unlink(missing_ok=True)
+
+    def delete_many(self, uids: Iterable[str]) -> None:
+        deleted = set()
+        for uid in uids:
+            if not _valid_uid(uid):
+                continue
+            self._path(uid).unlink(missing_ok=True)
+            deleted.add(uid)
+        if self.active_uid() in deleted:
             (self.dir / "active.txt").unlink(missing_ok=True)
 
     def active_uid(self) -> str | None:

@@ -976,7 +976,7 @@ class MainWindow(QMainWindow):
             {s.uid: s.name for s in self.subs.list()})
         self.profiles.set_profiles(profiles, self.store.active_uid())
         self._rebuild_servers_tray_menu()
-        self._reload_chains()
+        self._reload_chains(profiles)
 
     def _connected_profile(self) -> Profile | None:
         """The profile the running tunnel was built from, when it is known.
@@ -1063,8 +1063,7 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self, tr("Delete"),
                                 tr("Delete {n} server(s)?", n=len(uids))) \
                 == QMessageBox.Yes:
-            for uid in uids:
-                self.store.delete(uid)
+            self.store.delete_many(uids)
             self._reload_profiles()
 
     def _set_active(self, uid: str) -> None:
@@ -1519,9 +1518,11 @@ class MainWindow(QMainWindow):
 
     # ── connection --------------------------------------------------------
 
-    def _reload_chains(self):
+    def _reload_chains(self, profiles: list[Profile] | None = None):
         uid = self.conn.state.chain_uid if self.conn.is_connected() else ''
-        self.chains_page.set_chains(self.chain_store.list(), self.store.list(),
+        if profiles is None:
+            profiles = self.store.list()
+        self.chains_page.set_chains(self.chain_store.list(), profiles,
                                    self.chain_results.load(), self.results.load(), uid,
                                    self._chain_interface_name)
         self.chains_page.set_testing(self._chain_cancel is not None)

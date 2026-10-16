@@ -325,6 +325,7 @@ class _ServerTableCore(QWidget):
         # selectable, or fall back to the active row on a first load.
         previous = self.selected_uids()
         self.model.set_profiles(profiles, active_uid)
+        self.proxy.reapply_sort()  # fresh rows arrive in store order
         keep = [u for u in previous if self.model.row_of_uid(u) is not None]
         if not keep and active_uid and self.model.row_of_uid(active_uid) is not None:
             keep = [active_uid]
@@ -334,17 +335,25 @@ class _ServerTableCore(QWidget):
         # Just the ● marker moves, no reset -- selecting a row to activate
         # it must not disturb a multi-selection made for Test/Delete.
         self.model.set_active_uid(uid)
+        if self.proxy.sorted_column == COL_ACTIVE:
+            self.proxy.reapply_sort()
 
     def set_results(self, results: dict) -> None:
         self.model.set_results(results)
+        if self.proxy.sorted_column == COL_DELAY:
+            self.proxy.reapply_sort()
 
     def set_sub_names(self, names: dict) -> None:
         self.model.set_sub_names(names)
+        if self.proxy.sorted_column == COL_SUB:
+            self.proxy.reapply_sort()
 
     def update_result(
         self, uid: str, delay_ms: float | None, error: str | None, skipped: bool = False,
     ) -> None:
         self.model.update_result(uid, delay_ms, error, skipped)
+        if self.proxy.sorted_column == COL_DELAY:
+            self.proxy.reapply_sort()
 
     def update_detail(self, uid: str, fields: dict) -> None:
         self.model.update_detail(uid, fields)

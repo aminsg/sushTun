@@ -141,3 +141,19 @@ def test_fa_metric_value_and_unit_share_one_line():
     finally:
         i18n.set_language('en')
     app.processEvents()
+
+
+def test_reload_chains_accepts_preloaded_profiles(tmp_path, monkeypatch):
+    from xrayui import paths
+    from xrayui.ui.main_window import MainWindow
+
+    monkeypatch.setattr(paths, "base_dir", lambda: tmp_path)
+    paths.ensure_dirs()
+    win = MainWindow(elevated=False)
+    p = win.store.save(Profile(name="P1", address="x", port=443, id="u"))
+    win._reload_chains()
+    assert len(win.chains_page.cards) == 0
+    win._reload_chains([p])
+    assert len(win.chains_page.cards) == 0
+    win.close()
+    win.deleteLater()

@@ -378,6 +378,54 @@ def test_header_measures_a_sample_of_rows_not_every_row(qapp):
     assert panel.table.horizontalHeader().resizeContentsPrecision() == 30
 
 
+def test_sort_cache_matches_the_uncached_order_exactly(qapp):
+    from PySide6.QtCore import QSortFilterProxyModel
+
+    class _UncachedProxy(ProfileFilterProxy):
+        def sort(self, column, order=Qt.AscendingOrder):
+            QSortFilterProxyModel.sort(self, column, order)  # skip the key cache
+
+    names = ["Tokyo", "zone", "Tehran", "Berlin", "berlin", "",
+             "dup", "dup", "n" * 300, "server-10", "server-9", "Zurich",
+             "Omega", "cafe"]
+    protos = ["vless", "vmess", "trojan", "wireguard", "vless", "vmess",
+              "trojan", "vless", "vmess", "trojan", "vless", "vmess",
+              "trojan", "wireguard"]
+    models = []
+    for cls in (ProfileFilterProxy, _UncachedProxy):
+        model = ProfileTableModel()
+        model.set_profiles(
+            [Profile(name=n, protocol=protos[i], address=f"h{i}.example.com",
+                     port=443, id="u", network="ws", security="tls",
+                     uid=f"e{i}", sub_uid="s1" if i % 2 else "")
+             for i, n in enumerate(names)], "e3")
+        model.set_sub_names({"s1": "My Sub"})
+        model.set_results({
+            "e0": {"delay_ms": 5.0, "error": None},
+            "e1": {"delay_ms": None, "error": "boom"},
+            "e2": {"delay_ms": None, "error": "n/a (UDP)", "skipped": True},
+            "e4": {"delay_ms": 0.0, "error": None},
+            "e5": {"delay_ms": 42.5, "error": None},
+            "e6": {"delay_ms": 1e12, "error": None},
+            "e7": {"delay_ms": None, "error": "boom"},
+            # e3 and the rest have no entry: untested
+        })
+        proxy = cls()
+        proxy.setSourceModel(model)
+        models.append((model, proxy))
+
+    def order_of(model, proxy):
+        return [model.profile_at(proxy.mapToSource(proxy.index(r, 0)).row()).uid
+                for r in range(proxy.rowCount())]
+
+    ncols = models[0][0].columnCount()
+    for col in range(ncols):
+        for order in (Qt.AscendingOrder, Qt.DescendingOrder):
+            models[0][1].sort(col, order)
+            models[1][1].sort(col, order)
+            assert order_of(*models[0]) == order_of(*models[1]), (col, order)
+
+
 def test_short_table_columns_still_fit_their_header_text(qapp):
     from PySide6.QtWidgets import QHeaderView
 
