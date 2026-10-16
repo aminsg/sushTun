@@ -69,6 +69,20 @@ def test_dns_dialog_cycles_leave_nothing_behind(window):
     assert len(window.findChildren(DnsDialog)) == 0
 
 
+def test_attaching_a_new_popup_menu_discards_the_old_one(qapp):
+    from PySide6.QtWidgets import QMenu
+
+    from xrayui.ui.mac import PopupButton
+
+    btn = PopupButton("Routing", "Simple")
+    for _ in range(4):
+        menu = QMenu(btn)
+        btn.set_menu(menu)
+    _flush()
+    assert len(btn.findChildren(QMenu)) == 1, (
+        "every set_menu() parks another dead menu under the button")
+
+
 def test_routing_dialog_cycles_leave_nothing_behind(window):
     from xrayui.ui.routing_dialog import RoutingDialog
 

@@ -296,7 +296,12 @@ class PopupButton(QToolButton):
         self.update()
 
     def set_menu(self, menu: QMenu) -> None:
+        # The button never pops up more than one menu: park a replaced one
+        # for deletion instead of leaving it under the button forever.
+        old = self.menu()
         self.setMenu(menu)
+        if old is not None:
+            old.deleteLater()
 
     def _sync_accessible(self) -> None:
         self.setAccessibleName(f"{self._label}: {self._value}".strip(": ") or self._label)
