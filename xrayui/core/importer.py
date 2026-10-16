@@ -542,13 +542,15 @@ def parse_share_text(text: str) -> list[Profile]:
     # Notepad and many Windows tools start a UTF-8 file with a BOM. Left in, the
     # first link matched no scheme and a base64 body did not decode at all.
     body = _maybe_b64(text.lstrip("\ufeff"))
-    if _looks_like_wg_conf(body):
-        try:
-            profile = parse_wg_conf(body)
-        except ValueError:
-            return []
-        return [profile] if profile.is_valid() else []
     out: list[Profile] = []
+    if _looks_like_wg_conf(body):
+        # A pasted blob can hold a conf and share links; keep both.
+        try:
+            conf = parse_wg_conf(body)
+        except ValueError:
+            conf = None
+        if conf is not None and conf.is_valid():
+            out.append(conf)
     for line in body.splitlines():
         line = line.strip()
         try:

@@ -638,3 +638,18 @@ def test_config_outbound_with_nonsense_port_is_invalid():
     for bad_port in (80.5, True, [80], {"a": 1}):
         with pytest.raises(ValueError):
             importer.parse_json(_cfg(bad_port))
+
+
+def test_share_text_keeps_links_pasted_with_a_conf():
+    profiles = importer.parse_share_text(f"{SAMPLE}\n{WG_CONF}\n{WG_LINK}\n")
+    assert sorted(p.protocol for p in profiles) == ["vless", "wireguard", "wireguard"]
+
+
+def test_share_text_conf_alone_still_one_profile():
+    assert len(importer.parse_share_text(WG_CONF)) == 1
+
+
+def test_share_text_broken_conf_with_links_keeps_the_links():
+    broken = "[Interface]\nPrivateKey = x\n[Peer]\nEndpoint = nope\n"
+    profiles = importer.parse_share_text(f"{SAMPLE}\n{broken}")
+    assert [p.protocol for p in profiles] == ["vless"]
