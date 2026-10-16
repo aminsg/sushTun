@@ -327,3 +327,14 @@ def test_hidden_chain_exit_moves_tray_icon_and_tooltip(tray_window, qapp, monkey
     assert _icon_key(window.tray) != before_key
     assert "Germany" in window.tray.tips[-1] or "Chain1" in window.tray.tips[-1]
     assert not window.timer.isActive()
+
+
+def test_quit_while_connected_leaves_the_route_timer_stopped(window, qapp, monkeypatch):
+    monkeypatch.setattr(window.conn, "is_connected", lambda: True)
+    window.show()
+    _pump(qapp)
+    assert window.route_timer.isActive()
+    window.prepare_quit()
+    window.close()
+    _pump(qapp)
+    assert not window.route_timer.isActive(), "quit teardown must not be undone by hideEvent"

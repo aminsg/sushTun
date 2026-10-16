@@ -2356,6 +2356,8 @@ class MainWindow(QMainWindow):
 
     def hideEvent(self, event) -> None:  # noqa: N802 – Qt convention
         super().hideEvent(event)
+        if self._quitting:
+            return  # closeEvent just stopped the timers; don't re-arm them
         self._apply_polling_policy()
 
     def _edges_at(self, pos) -> Qt.Edge:
