@@ -300,6 +300,15 @@ def test_row_of_uid_lookup(qapp):
     assert model.row_of_uid("b") is None
 
 
+def test_row_of_uid_duplicate_uids_first_wins(qapp):
+    dup1 = Profile(name="First", uid="dup", address="1.1.1.1", port=443, id="u1")
+    dup2 = Profile(name="Second", uid="dup", address="2.2.2.2", port=443, id="u2")
+    model = ProfileTableModel()
+    model.set_profiles([dup1, dup2], "dup")
+    assert model.row_of_uid("dup") == 0
+
+
+
 
 def test_header_menu_toggles_an_optional_column(qapp):
     panel = ProfilePanel()

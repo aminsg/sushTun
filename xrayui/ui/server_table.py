@@ -98,7 +98,10 @@ class ProfileTableModel(QAbstractTableModel):
     def set_profiles(self, profiles: list[Profile], active_uid: str | None) -> None:
         self.beginResetModel()
         self._profiles = list(profiles)
-        self._row_by_uid = {p.uid: i for i, p in enumerate(self._profiles)}
+        row_by_uid: dict[str, int] = {}
+        for i, p in enumerate(self._profiles):
+            row_by_uid.setdefault(p.uid, i)
+        self._row_by_uid = row_by_uid
         self._active_uid = active_uid
         self.endResetModel()
 
