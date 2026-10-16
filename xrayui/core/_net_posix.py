@@ -147,13 +147,12 @@ def _run_best_effort(cmd: list[str]) -> None:
     """A teardown delete that must never stall disconnect.
 
     Route deletes are best-effort by design (deleting a route whose device is
-    already gone fails, and that is fine). A hung helper used to stall the
-    whole disconnect with no bound; now it gives up after a generous timeout
-    instead. Anything else still raises as before.
+    already gone fails, and that is fine). A hung or missing helper used to
+    stall or break the whole disconnect; now it gives up quietly instead.
     """
     try:
         proc.run(cmd, timeout=10)
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, OSError):
         pass
 
 

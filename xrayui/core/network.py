@@ -105,11 +105,12 @@ def restore_dns(alias: str, state: DnsState, retries: int = 1) -> bool:
 
 
 def _run_best_effort(cmd: list[str]) -> int:
-    """A teardown delete's return code, never a stall: a hung helper gives up
-    after a generous timeout instead of holding disconnect open forever."""
+    """A teardown delete's return code, never a stall: a hung or missing
+    helper gives up after a generous timeout instead of holding disconnect
+    open forever."""
     try:
         return proc.run(cmd, timeout=10).returncode
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, OSError):
         return 1
 
 

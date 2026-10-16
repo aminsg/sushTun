@@ -104,3 +104,21 @@ def test_chain_probe_never_leaves_a_zombie(monkeypatch):
     with chain_test._temporary(profiles, timeout=5, cancel=threading.Event(),
                                iface_alias="", core_cfg=None) as port:
         assert port > 0
+
+
+def test_posix_remove_routes_never_raises_when_helpers_missing(monkeypatch):
+    from xrayui.core import _net_posix as posix
+
+    def missing(cmd, **kw):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(posix.proc, "run", missing)
+    posix.remove_routes("203.0.113.10")  # best effort: must not raise
+
+
+def test_windows_remove_routes_never_raises_when_helpers_missing(win_net, monkeypatch):
+    def missing(cmd, **kw):
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+
+    monkeypatch.setattr(win_net.proc, "run", missing)
+    win_net.remove_routes("203.0.113.10")  # best effort: must not raise
