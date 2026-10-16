@@ -607,8 +607,6 @@ def parse_subscription(text: str) -> list[Profile]:
         try:
             if isinstance(item, dict):
                 profiles.append(_profile_from_json_dict(item))
-            elif isinstance(item, str):
-                profiles.append(parse_json(item))
         except (ValueError, TypeError, AttributeError, IndexError, OverflowError):
             continue
     return profiles
