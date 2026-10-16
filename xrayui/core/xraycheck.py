@@ -47,6 +47,9 @@ def _run_test(config_text: str, asset_dir=None) -> str | None:
             )
         except subprocess.TimeoutExpired:
             return "validation timed out"
+        except OSError as exc:
+            # A missing binary is a broken install, not a dialog crash.
+            return f"xray could not be started: {exc.strerror or exc}"
     finally:
         config_path.unlink(missing_ok=True)
 

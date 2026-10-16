@@ -212,3 +212,15 @@ def test_macos_dns_hijack_failure_restores_half_built_tunnel(monkeypatch, tmp_pa
                             "203.0.113.10", DnsState())
     assert "xray_stop" in calls
     assert not conn.state.is_connected()
+
+
+def test_check_config_reports_missing_binary_instead_of_raising(monkeypatch, tmp_path):
+    from xrayui import paths
+    from xrayui.core import xraycheck
+
+    monkeypatch.setattr(paths, "state_dir", lambda: tmp_path)
+    monkeypatch.setattr(paths, "base_dir", lambda: tmp_path)
+    monkeypatch.setattr(paths, "asset_dir", lambda: tmp_path)
+    monkeypatch.setattr(paths, "xray_exe", lambda: tmp_path / "no-such-xray")
+    reason = xraycheck.check_config("{}")
+    assert isinstance(reason, str) and reason
