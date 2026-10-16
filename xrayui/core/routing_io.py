@@ -185,6 +185,8 @@ def export_rules(rule_set: dict) -> list[dict]:
     """A rule set's rules as a bare array, in v2rayN's own sample key style."""
     out = []
     for rule in rule_set.get("rules") or []:
+        if not isinstance(rule, dict):
+            continue  # same tolerance build_rules has for a hand-edited set
         item: dict = {
             "remarks": rule.get("remarks", ""),
             "outboundTag": rule.get("outbound", "proxy"),
