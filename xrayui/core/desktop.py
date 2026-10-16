@@ -121,11 +121,16 @@ def open_url(url: str) -> bool:
 
 
 # -- the clipboard -------------------------------------------------------------
-# macOS: the pasteboard belongs to the logged-in user, and the elevated copy of
-# sushTun (root, behind the osascript password prompt) reads it as empty. Every
-# paste into the app found nothing while other apps pasted fine, and a link
-# copied out of the app never reached anything else. Reading and writing it as
-# the user who elevated us goes through their pasteboard instead.
+# macOS: the pasteboard belongs to the logged-in user, and an elevated sushTun
+# started outside that session reads it as empty: every paste into the app
+# found nothing while other apps pasted fine, and a link copied out of the
+# app never reached anything else. Reading and writing it as the user who
+# elevated us goes through their pasteboard instead.
+# Since the elevated app is now started inside the user's session
+# (elevate.py wraps it in `launchctl asuser`), the pasteboard may be directly
+# reachable too -- but this route is proven on a real Mac and is harmless
+# there either way, so it stays: a failure here still reads as "not this
+# case" and the caller falls back to Qt's clipboard.
 _CLIP_TIMEOUT = 5.0
 
 
@@ -139,11 +144,13 @@ def _clipboard_tool(tool: str, data: bytes | None = None) -> subprocess.Complete
     argv = _as_user(uid, gid, name, [tool])
     if argv is None:
         return None
-    # Becoming the user is not enough. osascript starts the elevated app
-    # outside the user's login session, and from there pbpaste reads nothing
-    # even as the user; only a command placed back in that session with
-    # launchctl asuser reaches their pasteboard. Measured on a macOS runner
-    # from a LaunchDaemon: plain and sudo -u read "", asuser read the text.
+    # The elevated app used to start outside the user's login session, and
+    # from there pbpaste read nothing even as the user; only a command placed
+    # back in that session with launchctl asuser reached their pasteboard
+    # (measured on a macOS runner from a LaunchDaemon: plain and sudo -u read
+    # "", asuser read the text). elevate.py now starts the app that way, so
+    # this wrapper is belt and braces -- kept because it also works when the
+    # pasteboard is directly reachable.
     argv = ["launchctl", "asuser", str(uid), *argv]
     # pbpaste/pbcopy pick their text encoding from the locale; without a UTF-8
     # one anything outside ASCII (a Persian server name) came back as "?".

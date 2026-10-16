@@ -1,5 +1,6 @@
 """Pure-Python checks for the macOS tun2socks bridge (no macOS required)."""
 import json
+import os
 import re
 import shlex
 import sys
@@ -89,7 +90,7 @@ def test_macos_service_names_with_spaces_survive_the_state_round_trip(monkeypatc
 
 
 def _mac_relaunch(monkeypatch, tmp_path, *, returncode, stderr="", stdout="4242\n",
-                  died_with=None):
+                   died_with=None, uid=501, launchctl=True):
     """`died_with`: the elevated app exits at once, leaving that text behind."""
     exe = tmp_path / "My Apps" / 'Xray "Portable"'
     exe.parent.mkdir(exist_ok=True)
@@ -97,6 +98,15 @@ def _mac_relaunch(monkeypatch, tmp_path, *, returncode, stderr="", stdout="4242\
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
     monkeypatch.setattr(sys, "argv", ["sushtun"])
+    # The session wrapper is on by default (a stand-in launchctl: only its
+    # existence is checked); pass launchctl=False for the old launch.
+    monkeypatch.setattr(os, "getuid", lambda: uid)
+    if launchctl:
+        stand_in = tmp_path / "launchctl"
+        stand_in.touch()
+        monkeypatch.setattr(elevate, "_LAUNCHCTL", str(stand_in))
+    else:
+        monkeypatch.setattr(elevate, "_LAUNCHCTL", "/nonexistent/launchctl-for-tests")
     seen = {}
 
     def fake_run(args, **_k):
@@ -126,8 +136,29 @@ def test_macos_relaunch_survives_spaces_and_quotes_in_the_path(monkeypatch, tmp_
     assert started
 
     argv = _command_of(seen["script"])
+    assert argv[:3] == [elevate._LAUNCHCTL, "asuser", "501"]
+    assert argv[3] == str(exe.resolve())
+    assert all(a.startswith("--session-env=") for a in argv[4:])
+
+
+def test_macos_relaunch_starts_the_app_inside_the_user_session(monkeypatch, tmp_path):
+    # launchctl asuser comes before the app itself: the same binary started
+    # bare runs outside the login session (no menu-bar icon, Dock quirks, an
+    # unreachable pasteboard), while asuser keeps uid 0 inside it.
+    exe, started, seen = _mac_relaunch(monkeypatch, tmp_path, returncode=0, uid=502)
+    assert started
+    argv = _command_of(seen["script"])
+    assert argv[:3] == [elevate._LAUNCHCTL, "asuser", "502"]
+    assert argv[3] == str(exe.resolve())
+
+
+def test_macos_relaunch_without_launchctl_uses_the_old_launch(monkeypatch, tmp_path):
+    exe, started, seen = _mac_relaunch(monkeypatch, tmp_path, returncode=0,
+                                       launchctl=False)
+    assert started
+    argv = _command_of(seen["script"])
+    assert "launchctl" not in argv
     assert argv[0] == str(exe.resolve())
-    assert all(a.startswith("--session-env=") for a in argv[1:])
 
 
 def test_macos_relaunch_carries_the_session_language(monkeypatch, tmp_path):
@@ -135,6 +166,7 @@ def test_macos_relaunch_carries_the_session_language(monkeypatch, tmp_path):
     monkeypatch.setenv("LANG", "fa_IR.UTF-8")
     _exe, _started, seen = _mac_relaunch(monkeypatch, tmp_path, returncode=0)
     argv = _command_of(seen["script"])
+    assert argv[:2] == [elevate._LAUNCHCTL, "asuser"]
     assert "--session-env=LANG=fa_IR.UTF-8" in argv
 
 

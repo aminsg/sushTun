@@ -153,6 +153,28 @@ def _relaunch_linux() -> bool:
 # the first second or two, while Python is still reading its own files.
 _MAC_START_WATCH = 4.0
 
+# launchctl(1): `asuser UID command` runs the command in that user's Mach
+# bootstrap context (their login session's services) without changing its
+# credentials -- the process stays uid 0, so routes/DNS/TUN still work.
+_LAUNCHCTL = "/bin/launchctl"
+
+
+def _session_launch_prefix() -> list[str]:
+    """`[launchctl, asuser, <uid>]`, or [] when the old launch must be used.
+
+    The uid is the launcher's own: this only ever runs unelevated, so it is
+    the user behind the password prompt. An already-root caller has no
+    session to join (and `asuser 0` would be meaningless), and without
+    /bin/launchctl there is nothing to wrap with: both fall back.
+    """
+    try:
+        uid = os.getuid()
+    except OSError:
+        return []
+    if uid == 0 or not os.path.exists(_LAUNCHCTL):
+        return []
+    return [_LAUNCHCTL, "asuser", str(uid)]
+
 
 def _pid_alive(pid: int) -> bool:
     try:
@@ -170,7 +192,15 @@ def _relaunch_macos() -> bool:
     # path split the command and the elevated app never started.
     # The session arguments too: `do shell script` starts from a bare
     # environment, which loses LANG and, in a source run, --user site-packages.
-    inner = " ".join(shlex.quote(a) for a in [*_elevated_cmd(), *_session_args()])
+    # The elevated app is placed back in the user's login session with
+    # `launchctl asuser`: started bare, it runs outside that session, and
+    # launchd withholds the menu-bar agent, the Dock and the pasteboard from
+    # it (no tray icon, Dock quirks, an unreachable clipboard). launchctl
+    # execs into the command, keeping its pid, so the `echo $!` watch below
+    # still tracks the real app -- and like any background start, it only
+    # survives the launcher because stdio is redirected to files, never pipes.
+    inner = " ".join(shlex.quote(a)
+                     for a in [*_session_launch_prefix(), *_elevated_cmd(), *_session_args()])
     # The elevated app is started in the background and osascript returns as
     # soon as the password is given. Waiting for it to exit kept osascript
     # alive for the whole session, and macOS listed that helper as a second
